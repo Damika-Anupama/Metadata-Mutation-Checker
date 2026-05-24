@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChangeEvent, DragEvent } from "react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Finding = {
   title: string;
@@ -190,6 +190,13 @@ function getMetadataStatus(value: unknown) {
   return { label: "Present", className: "bg-emerald-50 text-emerald-700" };
 }
 
+function getLoadingStep(seconds: number) {
+  if (seconds >= 8) return "Preparing report";
+  if (seconds >= 5) return "Checking mutation signals";
+  if (seconds >= 2) return "Extracting metadata";
+  return "Uploading file";
+}
+
 function DashboardMetric({ label, value, tone = "slate" }: { label: string; value: string; tone?: "slate" | "indigo" | "amber" | "emerald" }) {
   const toneClass = {
     slate: "bg-slate-50 text-slate-950",
@@ -253,6 +260,7 @@ function UploadDropzone({
   inputRef,
   isDragging,
   loading,
+  loadingSeconds = 0,
   selectedName,
   title,
   help,
@@ -266,6 +274,7 @@ function UploadDropzone({
   inputRef: React.RefObject<HTMLInputElement | null>;
   isDragging: boolean;
   loading: boolean;
+  loadingSeconds?: number;
   selectedName?: string;
   title: string;
   help: string;
@@ -329,16 +338,17 @@ function UploadDropzone({
         {loading && (
           <div className="mt-5 w-full rounded-lg border border-indigo-100 bg-indigo-50 p-4 text-left">
             <div className="flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-700">
-              <span>Processing</span>
-              <span>Please wait</span>
+              <span>{getLoadingStep(loadingSeconds)}</span>
+              <span>{loadingSeconds >= 3 ? `${loadingSeconds}s elapsed` : "Please wait"}</span>
             </div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
               <div className="h-full w-2/3 animate-pulse rounded-full bg-indigo-600" />
             </div>
             <ul className="mt-3 space-y-1.5 text-xs text-indigo-700/80">
-              <li>• Reading PDF structure</li>
-              <li>• Extracting document metadata</li>
-              <li>• Preparing the analysis report</li>
+              <li>• {loadingSeconds >= 0 ? "Uploading file" : "Waiting"}</li>
+              <li>• {loadingSeconds >= 2 ? "Extracting document metadata" : "Queued metadata extraction"}</li>
+              <li>• {loadingSeconds >= 5 ? "Checking mutation signals" : "Preparing mutation checks"}</li>
+              <li>• {loadingSeconds >= 8 ? "Preparing the analysis report" : "Report will appear automatically"}</li>
             </ul>
           </div>
         )}
@@ -363,6 +373,17 @@ export default function Home() {
   const [compareDragging, setCompareDragging] = useState<[boolean, boolean]>([false, false]);
   const [compareError, setCompareError] = useState("");
   const [showOnlyDifferences, setShowOnlyDifferences] = useState(false);
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
+  const isAnyAnalysisLoading = loading || compareLoading.some(Boolean);
+
+  useEffect(() => {
+    if (!isAnyAnalysisLoading) return;
+    const startedAt = Date.now();
+    const intervalId = window.setInterval(() => {
+      setLoadingSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [isAnyAnalysisLoading]);
 
   const requestAnalysis = useCallback(async (selectedFile: File, source: string) => {
     const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -426,6 +447,7 @@ export default function Home() {
 
   const analyzeFile = useCallback(
     async (selectedFile: File) => {
+      setLoadingSeconds(0);
       setLoading(true);
       setError("");
       setReport(null);
@@ -493,6 +515,7 @@ export default function Home() {
         return;
       }
 
+      setLoadingSeconds(0);
       setCompareLoading((current) => {
         const next: [boolean, boolean] = [...current];
         next[slot] = true;
@@ -627,6 +650,7 @@ export default function Home() {
                 inputRef={inputRef}
                 isDragging={isDragging}
                 loading={loading}
+                loadingSeconds={loadingSeconds}
                 onBrowse={() => inputRef.current?.click()}
                 onDragLeave={() => setIsDragging(false)}
                 onDragOver={(event) => {
@@ -660,6 +684,7 @@ export default function Home() {
                     inputRef={compareInputRefs[slot]}
                     isDragging={compareDragging[slot]}
                     loading={compareLoading[slot]}
+                    loadingSeconds={loadingSeconds}
                     onBrowse={() => compareInputRefs[slot].current?.click()}
                     onDragLeave={() =>
                       setCompareDragging((current) => {
