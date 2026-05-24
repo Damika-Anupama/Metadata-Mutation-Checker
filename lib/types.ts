@@ -1,0 +1,30 @@
+export type Finding = {
+  title: string;
+  severity: string;
+  confidence: number;
+  category: string;
+  explanation: string;
+};
+
+export type Report = {
+  document_name: string;
+  file_type: string;
+  metadata_risk_score: number;
+  metadata_risk_level: string;
+  summary: string;
+  extracted_metadata: Record<string, unknown>;
+  findings: Finding[];
+  recommended_action: string;
+  disclaimer: string;
+};
+
+export type IconProps = { className?: string };
+export type Mode = "analyze" | "compare";
+export type CompareSlot = 0 | 1;
+
+export type CompareRow = {
+  key: string;
+  left: string;
+  right: string;
+  matches: boolean;
+};

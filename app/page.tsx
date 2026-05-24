@@ -2,37 +2,7 @@
 
 import type { ChangeEvent, DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
-type Finding = {
-  title: string;
-  severity: string;
-  confidence: number;
-  category: string;
-  explanation: string;
-};
-
-type Report = {
-  document_name: string;
-  file_type: string;
-  metadata_risk_score: number;
-  metadata_risk_level: string;
-  summary: string;
-  extracted_metadata: Record<string, unknown>;
-  findings: Finding[];
-  recommended_action: string;
-  disclaimer: string;
-};
-
-type IconProps = { className?: string };
-type Mode = "analyze" | "compare";
-type CompareSlot = 0 | 1;
-
-type CompareRow = {
-  key: string;
-  left: string;
-  right: string;
-  matches: boolean;
-};
+import type { CompareRow, CompareSlot, IconProps, Mode, Report } from "@/lib/types";
 
 const ANALYZE_ENDPOINT = "/api/analyze";
 const REQUEST_TIMEOUT_MS = 30000;
