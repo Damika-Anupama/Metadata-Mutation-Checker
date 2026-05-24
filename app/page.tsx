@@ -341,6 +341,7 @@ export default function Home() {
   const [compareLoading, setCompareLoading] = useState<[boolean, boolean]>([false, false]);
   const [compareDragging, setCompareDragging] = useState<[boolean, boolean]>([false, false]);
   const [compareError, setCompareError] = useState("");
+  const [showOnlyDifferences, setShowOnlyDifferences] = useState(false);
 
   const requestAnalysis = useCallback(async (selectedFile: File, source: string) => {
     const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -501,6 +502,9 @@ export default function Home() {
   }, [compareReports]);
 
   const differencesCount = compareRows.filter((row) => !row.matches).length;
+  const matchesCount = compareRows.length - differencesCount;
+  const filteredCompareRows = showOnlyDifferences ? compareRows.filter((row) => !row.matches) : compareRows;
+  const riskDelta = compareReports[0] && compareReports[1] ? Math.abs(compareReports[0].metadata_risk_score - compareReports[1].metadata_risk_score) : 0;
 
   const downloadJson = () => {
     if (!report) return;
@@ -641,18 +645,34 @@ export default function Home() {
               <section className="mt-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Comparison report</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Comparison dashboard</p>
                     <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">
                       {differencesCount === 0 ? "Metadata matches" : `${differencesCount} metadata differences found`}
                     </h2>
+                    <p className="mt-2 text-sm text-slate-500">
+                      {compareReports[0].document_name} compared with {compareReports[1].document_name}
+                    </p>
                   </div>
-                  <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3.5 py-1.5 text-sm font-semibold text-indigo-700">
-                    {compareReports[0].document_name} vs {compareReports[1].document_name}
-                  </span>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
+                    <input
+                      checked={showOnlyDifferences}
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      onChange={(event) => setShowOnlyDifferences(event.target.checked)}
+                      type="checkbox"
+                    />
+                    Show only differences
+                  </label>
                 </div>
 
-                <div className="mt-6 overflow-hidden rounded-lg border border-slate-200">
-                  <table className="w-full border-collapse text-left text-sm">
+                <div className="mt-6 grid gap-3 sm:grid-cols-4">
+                  <DashboardMetric label="Compared fields" tone="indigo" value={`${compareRows.length}`} />
+                  <DashboardMetric label="Matching" tone="emerald" value={`${matchesCount}`} />
+                  <DashboardMetric label="Different" tone={differencesCount ? "amber" : "emerald"} value={`${differencesCount}`} />
+                  <DashboardMetric label="Risk delta" tone={riskDelta ? "amber" : "emerald"} value={`${riskDelta}`} />
+                </div>
+
+                <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full min-w-[760px] border-collapse text-left text-sm">
                     <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                       <tr>
                         <th className="px-4 py-3 font-semibold">Field</th>
@@ -662,22 +682,30 @@ export default function Home() {
                       </tr>
                     </thead>
                     <tbody>
-                      {compareRows.map((row) => (
-                        <tr className="border-t border-slate-200" key={row.key}>
-                          <td className="bg-slate-50 px-4 py-3 font-medium text-slate-700">{row.key}</td>
-                          <td className="px-4 py-3 text-slate-600">{row.left}</td>
-                          <td className="px-4 py-3 text-slate-600">{row.right}</td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                row.matches ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
-                              }`}
-                            >
-                              {row.matches ? "Match" : "Different"}
-                            </span>
+                      {filteredCompareRows.length === 0 ? (
+                        <tr>
+                          <td className="px-4 py-5 text-center text-sm font-medium text-slate-500" colSpan={4}>
+                            No differences to show.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        filteredCompareRows.map((row) => (
+                          <tr className={`border-t border-slate-200 transition ${row.matches ? "hover:bg-slate-50" : "bg-amber-50/40 hover:bg-amber-50"}`} key={row.key}>
+                            <td className="bg-slate-50 px-4 py-3 font-medium text-slate-700">{formatMetadataLabel(row.key)}</td>
+                            <td className="px-4 py-3 text-slate-600">{row.left}</td>
+                            <td className="px-4 py-3 text-slate-600">{row.right}</td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                  row.matches ? "bg-emerald-50 text-emerald-700" : "bg-amber-100 text-amber-800"
+                                }`}
+                              >
+                                {row.matches ? "Match" : "Different"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
