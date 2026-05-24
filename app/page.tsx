@@ -160,6 +160,24 @@ function formatBytes(value: unknown) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function formatMetadataLabel(key: string) {
+  return key.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getMetadataGroup(key: string) {
+  if (["file_name", "file_size_bytes", "file_type", "pdf_version", "page_count", "is_encrypted"].includes(key)) return "File & structure";
+  if (["created_date", "modified_date", "raw_created_date", "raw_modified_date"].includes(key)) return "Dates";
+  if (["author", "title", "subject"].includes(key)) return "Document details";
+  if (["creator", "producer"].includes(key)) return "Authoring tools";
+  return "Other metadata";
+}
+
+function getMetadataStatus(value: unknown) {
+  if (value === undefined || value === null || value === "") return { label: "Missing", className: "bg-amber-50 text-amber-700" };
+  if (typeof value === "boolean") return { label: value ? "Yes" : "No", className: value ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700" };
+  return { label: "Present", className: "bg-emerald-50 text-emerald-700" };
+}
+
 function DashboardMetric({ label, value, tone = "slate" }: { label: string; value: string; tone?: "slate" | "indigo" | "amber" | "emerald" }) {
   const toneClass = {
     slate: "bg-slate-50 text-slate-950",
@@ -732,22 +750,70 @@ function ReportView({ report, onDownload }: { report: Report; onDownload: () => 
           )}
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-bold text-slate-950">Extracted metadata</h3>
-          <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
-            <table className="w-full border-collapse text-left text-sm">
-              <tbody>
-                {Object.entries(report.extracted_metadata).map(([key, value]) => (
-                  <tr className="border-b border-slate-200 last:border-0" key={key}>
-                    <td className="w-1/3 bg-slate-50 px-4 py-3 font-medium text-slate-700">{key}</td>
-                    <td className="px-4 py-3 text-slate-600">{formatValue(value)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <MetadataTable metadata={report.extracted_metadata} />
       </div>
     </section>
+  );
+}
+
+
+function MetadataTable({ metadata }: { metadata: Record<string, unknown> }) {
+  const [query, setQuery] = useState("");
+  const rows = Object.entries(metadata).map(([key, value]) => ({ key, value, group: getMetadataGroup(key) }));
+  const filteredRows = rows.filter((row) => {
+    const text = `${row.key} ${row.group} ${formatValue(row.value)}`.toLowerCase();
+    return text.includes(query.trim().toLowerCase());
+  });
+  const groups = Array.from(new Set(filteredRows.map((row) => row.group)));
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-lg font-bold text-slate-950">Extracted metadata</h3>
+          <p className="mt-1 text-sm text-slate-500">Grouped fields with searchable values and missing-data flags.</p>
+        </div>
+        <label className="relative block sm:w-64">
+          <span className="sr-only">Search metadata</span>
+          <input
+            className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search metadata..."
+            type="search"
+            value={query}
+          />
+        </label>
+      </div>
+
+      <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
+        {filteredRows.length === 0 ? (
+          <p className="bg-slate-50 px-4 py-5 text-sm font-medium text-slate-500">No metadata fields match your search.</p>
+        ) : (
+          groups.map((group) => (
+            <div key={group}>
+              <div className="bg-slate-100 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{group}</div>
+              <table className="w-full border-collapse text-left text-sm">
+                <tbody>
+                  {filteredRows
+                    .filter((row) => row.group === group)
+                    .map((row) => {
+                      const status = getMetadataStatus(row.value);
+                      return (
+                        <tr className="border-t border-slate-200 transition hover:bg-indigo-50/30" key={row.key}>
+                          <td className="w-2/5 bg-slate-50 px-4 py-3 font-medium text-slate-700">{formatMetadataLabel(row.key)}</td>
+                          <td className="px-4 py-3 text-slate-600">{formatValue(row.value)}</td>
+                          <td className="px-4 py-3 text-right">
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${status.className}`}>{status.label}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   );
 }
