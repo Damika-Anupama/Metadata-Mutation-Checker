@@ -102,6 +102,21 @@ function UploadIcon({ className }: IconProps) {
   );
 }
 
+function SpinnerIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-20" cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" />
+      <path
+        className="opacity-90"
+        d="M21 12a9 9 0 0 0-9-9"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="3"
+      />
+    </svg>
+  );
+}
+
 function FileIcon({ className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
@@ -185,21 +200,44 @@ function UploadDropzone({
         type="file"
       />
       <div className="flex max-w-md flex-col items-center">
-        <UploadIcon className="mb-5 h-11 w-11 text-slate-400" />
-        <p className="text-lg text-slate-700">{loading ? "Analyzing uploaded PDF..." : title}</p>
-        <p className="mt-2 text-sm text-slate-500">{help}</p>
+        {loading ? (
+          <SpinnerIcon className="mb-5 h-11 w-11 animate-spin text-indigo-600" />
+        ) : (
+          <UploadIcon className="mb-5 h-11 w-11 text-slate-400" />
+        )}
+        <p className="text-lg font-medium text-slate-700">{loading ? "Analyzing uploaded PDF..." : title}</p>
+        <p className="mt-2 text-sm text-slate-500">
+          {loading ? "Extracting metadata and checking for mutation signals. This can take a few seconds." : help}
+        </p>
         <button
-          className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-indigo-600 px-5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-100"
+          className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-indigo-600 px-5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-indigo-400"
+          disabled={loading}
           onClick={onBrowse}
           type="button"
         >
           <FileIcon className="h-4 w-4" />
-          Browse Files
+          {loading ? "Analyzing..." : "Browse Files"}
         </button>
         {selectedName && (
           <p className="mt-4 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
             Selected: <span className="text-slate-900">{selectedName}</span>
           </p>
+        )}
+        {loading && (
+          <div className="mt-5 w-full rounded-lg border border-indigo-100 bg-indigo-50 p-4 text-left">
+            <div className="flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-700">
+              <span>Processing</span>
+              <span>Please wait</span>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+              <div className="h-full w-2/3 animate-pulse rounded-full bg-indigo-600" />
+            </div>
+            <ul className="mt-3 space-y-1.5 text-xs text-indigo-700/80">
+              <li>• Reading PDF structure</li>
+              <li>• Extracting document metadata</li>
+              <li>• Preparing the analysis report</li>
+            </ul>
+          </div>
         )}
       </div>
     </div>
