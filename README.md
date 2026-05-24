@@ -1,136 +1,48 @@
-# Document Metadata Mutation Checker
+# Metadata Mutation Checker Frontend
 
-## Overview
+Single-deploy Next.js app for the PDF Metadata Mutation Checker portfolio demo.
 
-This project is a full-stack application enabling users to upload PDF documents for metadata analysis. It extracts metadata and performs rule-based checks to highlight potential indicators of metadata mutations, though it does not confirm document tampering and only flags signals for manual review.
-
-## Tech Stack
-
-- Python
-- FastAPI
-- pypdf
-- React
-- Next.js
-- Tailwind CSS
-
-## Features
-
-- PDF file upload
-- Metadata extraction
-- Rule-based suspicious metadata checks
-- Risk score generation
-- Risk level classification
-- Findings with severity and confidence
-- Recommended action
-- Downloadable JSON report
-
-## Metadata Fields Extracted
-
-- File name
-- File size
-- File type
-- PDF version
-- Created date
-- Modified date
-- Author
-- Creator
-- Producer
-- Title
-- Subject
-- Page count
-- Encryption status
-
-## Rules Implemented
-
-### Date Checks
-
-- Modified date exists but created date is missing
-- Modified date is earlier than created date
-- Modified date is much later than created date
-- Created or modified date format is unusual
-- Created and modified dates are missing
-
-### Software Checks
-
-- Creator and producer mismatch
-- Metadata references editing/export tools such as Acrobat, Preview, Photoshop, Illustrator, Canva, scanner software, or online PDF editors
-
-### Missing Metadata Checks
-
-- Missing author
-- Missing title
-
-### Structural Checks
-
-- PDF encryption status
-- Zero page count
-
-## Risk Scoring Logic
-
-Each finding contributes to the final score based on severity and confidence.
-
-Severity weights:
-
-- Low: 10
-- Medium: 25
-- High: 45
-
-The score is adjusted if multiple categories of findings are found together.
-
-Weak findings alone are capped so that harmless metadata issues do not create a high-risk result.
-
-Risk levels:
-
-- 0–30: Low
-- 31–65: Medium
-- 66–100: High
-
-## Setup Instructions
-
-### Backend
+## Local Development
 
 ```bash
-cd backend
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-````
-
-Backend runs at:
-
-```text
-http://127.0.0.1:8000
-```
-
-### Frontend
-
-```bash
-cd frontend
 npm install
 npm run dev
 ```
 
-Frontend runs at:
+Open:
 
 ```text
 http://localhost:3000
 ```
 
-## Limitations
+## API
 
-* This tool mainly supports PDF files.
-* Metadata indicators are not proof of tampering.
-* Some PDF generators do not save complete metadata.
-* Scanned PDFs may contain limited metadata.
-* Deep forensic checks are outside the scope of this assignment.
+The PDF analysis runs in the same Next.js deployment:
 
-## Future Improvements
+```text
+POST /api/analyze
+```
 
-* Support JPG and PNG EXIF metadata
-* Support DOCX metadata extraction
-* Detect PDF incremental updates
-* Compare two documents
-* Generate a PDF summary report
-* Show raw metadata and interpreted metadata separately
-* Add technical and simple explanation modes
+Upload field:
+
+```text
+file
+```
+
+## Deploy on Vercel
+
+Use the `frontend` folder as the Vercel root directory.
+
+Build command:
+
+```bash
+npm run build
+```
+
+Output is handled by Next.js automatically.
+
+Optional environment variable:
+
+```text
+MAX_UPLOAD_SIZE_MB=8
+```
