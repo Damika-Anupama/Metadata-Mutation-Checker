@@ -820,6 +820,23 @@ export default function Home() {
           </div>
         </section>
       </main>
+
+      <footer className="border-t border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-5xl flex-col gap-4 px-6 py-6 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+          <p>Built as a portfolio-ready PDF metadata analysis demo.</p>
+          <div className="flex flex-wrap gap-3">
+            <a className="font-medium text-slate-700 transition hover:text-indigo-600" href="https://github.com/Damika-Anupama/Metadata-Mutation-Checker" rel="noreferrer" target="_blank">
+              GitHub repo
+            </a>
+            <a className="font-medium text-slate-700 transition hover:text-indigo-600" href="https://metadata-mutation-checker-chi.vercel.app/" rel="noreferrer" target="_blank">
+              Live demo
+            </a>
+            <a className="font-medium text-slate-700 transition hover:text-indigo-600" href="https://github.com/Damika-Anupama" rel="noreferrer" target="_blank">
+              Developer profile
+            </a>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
