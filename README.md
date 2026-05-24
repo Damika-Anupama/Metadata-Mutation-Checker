@@ -8,6 +8,12 @@ Live demo:
 https://metadata-mutation-checker-chi.vercel.app/
 ```
 
+## Demo
+
+![Metadata Mutation Checker demo](assets/metadata-mutation-checker-demo.gif)
+
+This short demo shows the PDF upload flow, metadata extraction, mutation signal checks, risk summary, and generated findings.
+
 ## Branches
 
 `main` is intentionally kept as the Vercel-ready frontend-only demo branch. The app, API route, and shared metadata-analysis logic live at the repository root so Vercel can deploy from the project root without extra root-directory settings.
