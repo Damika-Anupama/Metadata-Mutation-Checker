@@ -355,6 +355,7 @@ export default function Home() {
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [exportStatus, setExportStatus] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [compareFiles, setCompareFiles] = useState<[File | null, File | null]>([null, null]);
   const [compareReports, setCompareReports] = useState<[Report | null, Report | null]>([null, null]);
@@ -456,6 +457,7 @@ export default function Home() {
       setFile(selectedFile);
       setError("");
       setReport(null);
+      setExportStatus("");
       const validationMessage = validatePdfFile(selectedFile);
       if (validationMessage) {
         setError(validationMessage);
@@ -534,15 +536,43 @@ export default function Home() {
   const filteredCompareRows = showOnlyDifferences ? compareRows.filter((row) => !row.matches) : compareRows;
   const riskDelta = compareReports[0] && compareReports[1] ? Math.abs(compareReports[0].metadata_risk_score - compareReports[1].metadata_risk_score) : 0;
 
-  const downloadJson = () => {
-    if (!report) return;
-    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+  const downloadBlob = (content: string, filename: string, type: string) => {
+    const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${report.document_name}-metadata-report.json`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const buildReportSummary = (currentReport: Report) => [
+    `Metadata report: ${currentReport.document_name}`,
+    `Risk: ${currentReport.metadata_risk_level} (${currentReport.metadata_risk_score}/100)`,
+    `Findings: ${currentReport.findings.length}`,
+    `Summary: ${currentReport.summary}`,
+    `Recommended action: ${currentReport.recommended_action}`,
+  ].join("\n");
+
+  const downloadJson = () => {
+    if (!report) return;
+    downloadBlob(JSON.stringify(report, null, 2), `${report.document_name}-metadata-report.json`, "application/json");
+    setExportStatus("JSON report downloaded.");
+  };
+
+  const downloadText = () => {
+    if (!report) return;
+    const findingsText = report.findings.length
+      ? report.findings.map((finding) => `- [${finding.severity}] ${finding.title}: ${finding.explanation}`).join("\n")
+      : "- No suspicious metadata indicators were detected.";
+    downloadBlob(`${buildReportSummary(report)}\n\nFindings:\n${findingsText}\n`, `${report.document_name}-metadata-report.txt`, "text/plain");
+    setExportStatus("Text report downloaded.");
+  };
+
+  const copySummary = async () => {
+    if (!report) return;
+    await navigator.clipboard.writeText(buildReportSummary(report));
+    setExportStatus("Summary copied to clipboard.");
   };
 
   const switchMode = (nextMode: Mode) => {
@@ -616,7 +646,7 @@ export default function Home() {
             </form>
 
 
-            {report && <ReportView report={report} onDownload={downloadJson} />}
+            {report && <ReportView exportStatus={exportStatus} onCopySummary={copySummary} onDownloadJson={downloadJson} onDownloadText={downloadText} report={report} />}
           </>
         ) : (
           <>
@@ -746,7 +776,19 @@ export default function Home() {
   );
 }
 
-function ReportView({ report, onDownload }: { report: Report; onDownload: () => void }) {
+function ReportView({
+  report,
+  exportStatus,
+  onCopySummary,
+  onDownloadJson,
+  onDownloadText,
+}: {
+  report: Report;
+  exportStatus: string;
+  onCopySummary: () => void;
+  onDownloadJson: () => void;
+  onDownloadText: () => void;
+}) {
   return (
     <section className="mt-8 grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -755,11 +797,21 @@ function ReportView({ report, onDownload }: { report: Report; onDownload: () => 
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Analysis dashboard</p>
             <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">{report.document_name}</h2>
           </div>
-          <button className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" onClick={onDownload} type="button">
-            <DownloadIcon className="h-4 w-4" />
-            Download JSON
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" onClick={onCopySummary} type="button">
+              Copy summary
+            </button>
+            <button className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" onClick={onDownloadText} type="button">
+              <DownloadIcon className="h-4 w-4" />
+              TXT
+            </button>
+            <button className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700" onClick={onDownloadJson} type="button">
+              <DownloadIcon className="h-4 w-4" />
+              JSON
+            </button>
+          </div>
         </div>
+        {exportStatus && <p className="mt-3 text-sm font-medium text-emerald-700">{exportStatus}</p>}
 
         <div className="mt-6 flex flex-col gap-6 rounded-xl border border-slate-200 bg-slate-50 p-5 sm:flex-row sm:items-center">
           <RiskScoreRing level={report.metadata_risk_level} score={report.metadata_risk_score} />
