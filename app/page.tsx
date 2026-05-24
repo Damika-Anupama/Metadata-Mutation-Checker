@@ -140,6 +140,71 @@ function getRiskClass(level: string) {
   return "border-emerald-200 bg-emerald-50 text-emerald-700";
 }
 
+function getRiskAccent(level: string) {
+  if (level === "High") return "text-red-600";
+  if (level === "Medium") return "text-amber-600";
+  return "text-emerald-600";
+}
+
+function getRiskRingColor(level: string) {
+  if (level === "High") return "#dc2626";
+  if (level === "Medium") return "#d97706";
+  return "#059669";
+}
+
+function formatBytes(value: unknown) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes)) return "N/A";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function DashboardMetric({ label, value, tone = "slate" }: { label: string; value: string; tone?: "slate" | "indigo" | "amber" | "emerald" }) {
+  const toneClass = {
+    slate: "bg-slate-50 text-slate-950",
+    indigo: "bg-indigo-50 text-indigo-700",
+    amber: "bg-amber-50 text-amber-700",
+    emerald: "bg-emerald-50 text-emerald-700",
+  }[tone];
+
+  return (
+    <div className={`rounded-lg border border-slate-200 p-4 ${toneClass}`}>
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-70">{label}</p>
+      <p className="mt-2 text-xl font-bold tracking-tight">{value}</p>
+    </div>
+  );
+}
+
+function RiskScoreRing({ score, level }: { score: number; level: string }) {
+  const radius = 42;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (Math.max(0, Math.min(score, 100)) / 100) * circumference;
+
+  return (
+    <div className="relative grid h-32 w-32 shrink-0 place-items-center">
+      <svg aria-hidden="true" className="h-32 w-32 -rotate-90" viewBox="0 0 112 112">
+        <circle cx="56" cy="56" fill="none" r={radius} stroke="#e2e8f0" strokeWidth="10" />
+        <circle
+          cx="56"
+          cy="56"
+          fill="none"
+          r={radius}
+          stroke={getRiskRingColor(level)}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          strokeWidth="10"
+        />
+      </svg>
+      <div className="absolute text-center">
+        <p className={`text-3xl font-black ${getRiskAccent(level)}`}>{score}</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">risk score</p>
+      </div>
+    </div>
+  );
+}
+
 function TabButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
   return (
     <button
@@ -613,7 +678,7 @@ function ReportView({ report, onDownload }: { report: Report; onDownload: () => 
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Analysis report</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Analysis dashboard</p>
             <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">{report.document_name}</h2>
           </div>
           <button className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" onClick={onDownload} type="button">
@@ -621,15 +686,29 @@ function ReportView({ report, onDownload }: { report: Report; onDownload: () => 
             Download JSON
           </button>
         </div>
-        <div className={`mt-6 inline-flex rounded-full border px-3.5 py-1.5 text-sm font-semibold ${getRiskClass(report.metadata_risk_level)}`}>
-          {report.metadata_risk_level} Risk · Score {report.metadata_risk_score}
+
+        <div className="mt-6 flex flex-col gap-6 rounded-xl border border-slate-200 bg-slate-50 p-5 sm:flex-row sm:items-center">
+          <RiskScoreRing level={report.metadata_risk_level} score={report.metadata_risk_score} />
+          <div className="min-w-0 flex-1">
+            <div className={`inline-flex rounded-full border px-3.5 py-1.5 text-sm font-semibold ${getRiskClass(report.metadata_risk_level)}`}>
+              {report.metadata_risk_level} metadata risk
+            </div>
+            <p className="mt-4 leading-7 text-slate-600">{report.summary}</p>
+          </div>
         </div>
-        <p className="mt-5 leading-7 text-slate-600">{report.summary}</p>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <DashboardMetric label="Findings" tone={report.findings.length ? "amber" : "emerald"} value={`${report.findings.length}`} />
+          <DashboardMetric label="File size" value={formatBytes(report.extracted_metadata.file_size_bytes)} />
+          <DashboardMetric label="Pages" value={formatValue(report.extracted_metadata.page_count)} />
+          <DashboardMetric label="Encrypted" tone={report.extracted_metadata.is_encrypted ? "amber" : "emerald"} value={report.extracted_metadata.is_encrypted ? "Yes" : "No"} />
+        </div>
+
+        <div className="mt-6 rounded-lg border border-indigo-100 bg-indigo-50 p-5">
+          <h3 className="font-semibold text-indigo-950">Recommended action</h3>
+          <p className="mt-2 leading-7 text-indigo-900/75">{report.recommended_action}</p>
+        </div>
         <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm leading-6 text-slate-500">{report.disclaimer}</p>
-        <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-5">
-          <h3 className="font-semibold text-slate-950">Recommended action</h3>
-          <p className="mt-2 leading-7 text-slate-600">{report.recommended_action}</p>
-        </div>
       </div>
 
       <div className="space-y-6">
