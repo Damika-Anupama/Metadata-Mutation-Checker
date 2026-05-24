@@ -36,6 +36,8 @@ type CompareRow = {
 
 const ANALYZE_ENDPOINT = "/api/analyze";
 const REQUEST_TIMEOUT_MS = 30000;
+const MAX_UPLOAD_SIZE_MB = 8;
+const MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024;
 const LOG_PREFIX = "[PDF Auto Analyze]";
 const compareKeys = [
   "file_size_bytes",
@@ -63,6 +65,16 @@ function getFileDebugInfo(selectedFile: File) {
 function formatValue(value: unknown) {
   if (value === undefined || value === null || value === "") return "N/A";
   return String(value);
+}
+
+function validatePdfFile(selectedFile: File | null) {
+  if (!selectedFile) return "Please choose a PDF file first.";
+  const hasPdfMime = selectedFile.type === "application/pdf";
+  const hasPdfName = selectedFile.name.toLowerCase().endsWith(".pdf");
+  if (!hasPdfMime && !hasPdfName) return "Only PDF files are supported for this demo.";
+  if (selectedFile.size > MAX_UPLOAD_SIZE_BYTES) return `PDF is too large. Upload a file up to ${MAX_UPLOAD_SIZE_MB}MB.`;
+  if (selectedFile.size === 0) return "The selected PDF is empty. Choose a valid document.";
+  return "";
 }
 
 function ShieldIcon({ className }: IconProps) {
@@ -244,6 +256,7 @@ function UploadDropzone({
   selectedName,
   title,
   help,
+  validationMessage,
   onBrowse,
   onDragLeave,
   onDragOver,
@@ -256,6 +269,7 @@ function UploadDropzone({
   selectedName?: string;
   title: string;
   help: string;
+  validationMessage?: string;
   onBrowse: () => void;
   onDragLeave: () => void;
   onDragOver: (event: DragEvent<HTMLDivElement>) => void;
@@ -304,6 +318,12 @@ function UploadDropzone({
         {selectedName && (
           <p className="mt-4 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
             Selected: <span className="text-slate-900">{selectedName}</span>
+          </p>
+        )}
+        <p className="mt-3 text-xs font-medium text-slate-400">Accepted: PDF only · Max {MAX_UPLOAD_SIZE_MB}MB</p>
+        {validationMessage && (
+          <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+            {validationMessage}
           </p>
         )}
         {loading && (
@@ -436,8 +456,12 @@ export default function Home() {
       setFile(selectedFile);
       setError("");
       setReport(null);
-      if (!selectedFile) return;
-      void analyzeFile(selectedFile);
+      const validationMessage = validatePdfFile(selectedFile);
+      if (validationMessage) {
+        setError(validationMessage);
+        return;
+      }
+      void analyzeFile(selectedFile as File);
     },
     [analyzeFile]
   );
@@ -461,7 +485,11 @@ export default function Home() {
         return next;
       });
       setCompareError("");
-      if (!selectedFile) return;
+      const validationMessage = validatePdfFile(selectedFile);
+      if (validationMessage) {
+        setCompareError(`File ${slot + 1}: ${validationMessage}`);
+        return;
+      }
 
       setCompareLoading((current) => {
         const next: [boolean, boolean] = [...current];
@@ -470,7 +498,7 @@ export default function Home() {
       });
 
       try {
-        const analyzedReport = await requestAnalysis(selectedFile, `compare-${slot + 1}`);
+        const analyzedReport = await requestAnalysis(selectedFile as File, `compare-${slot + 1}`);
         setCompareReports((current) => {
           const next: [Report | null, Report | null] = [...current];
           next[slot] = analyzedReport;
@@ -558,7 +586,7 @@ export default function Home() {
               onSubmit={(event) => {
                 event.preventDefault();
                 if (!file) {
-                  setError("Please choose a PDF file first.");
+                  setError(validatePdfFile(file));
                   return;
                 }
                 selectFile(file, "submit");
@@ -583,10 +611,10 @@ export default function Home() {
                 onInputChange={(event) => selectFile(event.target.files?.[0] ?? null, "input")}
                 selectedName={file?.name}
                 title="Drag & drop your file here"
+                validationMessage={error}
               />
             </form>
 
-            {error && <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</div>}
 
             {report && <ReportView report={report} onDownload={downloadJson} />}
           </>
