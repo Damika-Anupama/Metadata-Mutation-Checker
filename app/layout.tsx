@@ -16,6 +16,11 @@ export const metadata: Metadata = {
   title: "Document Metadata Mutation Checker",
   description:
     "Single-deploy PDF metadata analysis demo with Next.js and rule-based risk scoring.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({
