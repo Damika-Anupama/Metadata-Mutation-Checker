@@ -4,6 +4,12 @@
 
 This project is a full-stack application enabling users to upload PDF documents for metadata analysis. It extracts metadata and performs rule-based checks to highlight potential indicators of metadata mutations, though it does not confirm document tampering and only flags signals for manual review.
 
+## Demo
+
+![Metadata Mutation Checker demo](assets/metadata-mutation-checker-demo.gif)
+
+This short demo shows the PDF upload flow, metadata extraction, mutation signal checks, risk summary, and generated findings.
+
 ## Tech Stack
 
 - Python
