@@ -796,6 +796,29 @@ export default function Home() {
             )}
           </>
         )}
+
+        <section className="mt-10 grid gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-500">Stack</p>
+            <p className="mt-2 font-semibold text-slate-950">Next.js + React</p>
+            <p className="mt-1 text-sm leading-6 text-slate-500">Root-deployed Vercel demo with an API route for analysis.</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-500">Processing</p>
+            <p className="mt-2 font-semibold text-slate-950">Server-side PDF checks</p>
+            <p className="mt-1 text-sm leading-6 text-slate-500">Metadata extraction runs behind `/api/analyze` with timeout handling.</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-500">Privacy</p>
+            <p className="mt-2 font-semibold text-slate-950">No dashboard storage</p>
+            <p className="mt-1 text-sm leading-6 text-slate-500">The UI does not persist uploaded files or reports in browser storage.</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-500">Output</p>
+            <p className="mt-2 font-semibold text-slate-950">Readable + portable</p>
+            <p className="mt-1 text-sm leading-6 text-slate-500">Viewer-friendly dashboard with JSON/TXT export actions.</p>
+          </div>
+        </section>
       </main>
     </div>
   );
