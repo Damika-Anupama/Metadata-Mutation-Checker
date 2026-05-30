@@ -1,272 +1,1038 @@
 "use client";
 
-import { useState } from "react";
+import type { ChangeEvent, DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CompareRow, CompareSlot, IconProps, Mode, Report } from "@/lib/types";
 
-type Finding = {
-  title: string;
-  severity: string;
-  confidence: number;
-  category: string;
-  explanation: string;
-};
-
-type Report = {
-  document_name: string;
-  file_type: string;
-  metadata_risk_score: number;
-  metadata_risk_level: string;
-  summary: string;
-  extracted_metadata: Record<string, unknown>;
-  findings: Finding[];
-  recommended_action: string;
-  disclaimer: string;
-};
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+const ANALYZE_ENDPOINT = "/api/analyze";
 const REQUEST_TIMEOUT_MS = 30000;
+const MAX_UPLOAD_SIZE_MB = 8;
+const MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024;
+const LOG_PREFIX = "[PDF Auto Analyze]";
+
+const DEMO_REPORT: Report = {
+  document_name: "service_agreement_2022.pdf",
+  file_type: "PDF",
+  metadata_risk_score: 68,
+  metadata_risk_level: "High",
+  summary:
+    "This document exhibits multiple metadata inconsistencies that warrant further investigation. The creation tool chain is inconsistent, the modification date is significantly later than the creation date, and the author field has been cleared — patterns commonly associated with retroactive document editing.",
+  extracted_metadata: {
+    file_name: "service_agreement_2022.pdf",
+    file_size_bytes: 184320,
+    file_type: "PDF",
+    pdf_version: "1.6",
+    created_date: "2022-04-14",
+    modified_date: "2024-09-27",
+    raw_created_date: "D:20220414112034+05'30'",
+    raw_modified_date: "D:20240927183201Z",
+    author: null,
+    creator: "Microsoft Word 2016",
+    producer: "Adobe PDF Library 23.6",
+    title: "Service Agreement",
+    subject: null,
+    page_count: 8,
+    is_encrypted: false,
+  },
+  findings: [
+    {
+      title: "Creator/Producer Version Mismatch",
+      severity: "High",
+      confidence: 0.92,
+      category: "Authoring Tools",
+      explanation:
+        "The document was created using Microsoft Word 2016, but the PDF producer is Adobe PDF Library 23.6 (released in 2023). This means the document was re-exported through a newer tool years after its stated creation date — a strong indicator of post-creation modification.",
+    },
+    {
+      title: "Modification Date 29 Months After Creation",
+      severity: "Medium",
+      confidence: 0.78,
+      category: "Temporal Anomaly",
+      explanation:
+        "The creation date is April 2022 but the last modification timestamp is September 2024 — a gap of 29 months. The modification also occurred in a different timezone (UTC) than the original creation (+05:30), suggesting the document was edited on a different system or location.",
+    },
+    {
+      title: "Author Field Cleared",
+      severity: "Medium",
+      confidence: 0.71,
+      category: "Missing Fields",
+      explanation:
+        "The Author metadata field is empty. Microsoft Word typically populates this automatically from the system user account. A blank Author field in a Word-generated PDF usually indicates the field was deliberately cleared before re-exporting.",
+    },
+  ],
+  recommended_action:
+    "Request the original source file (e.g., .docx) from the issuing party and verify that creation and modification timestamps are consistent with the stated signing date.",
+  disclaimer:
+    "This tool identifies statistical and structural anomalies in PDF metadata. Results are indicative only and do not confirm document forgery or authenticity. Consult a qualified document examiner for legal or compliance matters.",
+};
+
+const compareKeys = [
+  "file_size_bytes",
+  "pdf_version",
+  "created_date",
+  "modified_date",
+  "author",
+  "creator",
+  "producer",
+  "title",
+  "subject",
+  "page_count",
+  "is_encrypted",
+];
+
+function getFileDebugInfo(selectedFile: File) {
+  return {
+    name: selectedFile.name,
+    type: selectedFile.type || "unknown",
+    sizeBytes: selectedFile.size,
+    lastModified: new Date(selectedFile.lastModified).toISOString(),
+  };
+}
+
+function formatValue(value: unknown) {
+  if (value === undefined || value === null || value === "") return "N/A";
+  return String(value);
+}
+
+function validatePdfFile(selectedFile: File | null) {
+  if (!selectedFile) return "Please choose a PDF file first.";
+  const hasPdfMime = selectedFile.type === "application/pdf";
+  const hasPdfName = selectedFile.name.toLowerCase().endsWith(".pdf");
+  if (!hasPdfMime && !hasPdfName) return "Only PDF files are supported for this demo.";
+  if (selectedFile.size > MAX_UPLOAD_SIZE_BYTES) return `PDF is too large. Upload a file up to ${MAX_UPLOAD_SIZE_MB}MB.`;
+  if (selectedFile.size === 0) return "The selected PDF is empty. Choose a valid document.";
+  return "";
+}
+
+function ShieldIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M12 3.25 5.75 5.6v5.25c0 4.1 2.62 7.72 6.25 9.05 3.63-1.33 6.25-4.95 6.25-9.05V5.6L12 3.25Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path d="m9.25 12.1 1.75 1.75 3.9-4.15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function EyeIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M2.75 12s3.35-6.25 9.25-6.25S21.25 12 21.25 12 17.9 18.25 12 18.25 2.75 12 2.75 12Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path d="M12 14.75a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function CompareIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M7 4v13.25A2.75 2.75 0 0 0 9.75 20H17" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path d="M17 16.5 20.5 20 17 23.5M17 4H9.75A2.75 2.75 0 0 0 7 6.75V8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path d="M4 4h6M4 8h6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function UploadIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M12 15.75V4.75m0 0-4 4m4-4 4 4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path d="M5 14.75v2.5A2.75 2.75 0 0 0 7.75 20h8.5A2.75 2.75 0 0 0 19 17.25v-2.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function SpinnerIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-20" cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" />
+      <path
+        className="opacity-90"
+        d="M21 12a9 9 0 0 0-9-9"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="3"
+      />
+    </svg>
+  );
+}
+
+function FileIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M7 3.75h6.2L17 7.55v12.7H7a2 2 0 0 1-2-2V5.75a2 2 0 0 1 2-2Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path d="M13 3.75V8h4M8.5 12.5h7M8.5 16h5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function DownloadIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M12 4.75v10.5m0 0-4-4m4 4 4-4M5 19.25h14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function getRiskClass(level: string) {
+  if (level === "High") return "border-red-200 bg-red-50 text-red-700";
+  if (level === "Medium") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-emerald-200 bg-emerald-50 text-emerald-700";
+}
+
+function getRiskAccent(level: string) {
+  if (level === "High") return "text-red-600";
+  if (level === "Medium") return "text-amber-600";
+  return "text-emerald-600";
+}
+
+function getRiskRingColor(level: string) {
+  if (level === "High") return "#dc2626";
+  if (level === "Medium") return "#d97706";
+  return "#059669";
+}
+
+function formatBytes(value: unknown) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes)) return "N/A";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function formatMetadataLabel(key: string) {
+  return key.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getMetadataGroup(key: string) {
+  if (["file_name", "file_size_bytes", "file_type", "pdf_version", "page_count", "is_encrypted"].includes(key)) return "File & structure";
+  if (["created_date", "modified_date", "raw_created_date", "raw_modified_date"].includes(key)) return "Dates";
+  if (["author", "title", "subject"].includes(key)) return "Document details";
+  if (["creator", "producer"].includes(key)) return "Authoring tools";
+  return "Other metadata";
+}
+
+function getMetadataStatus(value: unknown) {
+  if (value === undefined || value === null || value === "") return { label: "Missing", className: "bg-amber-50 text-amber-700" };
+  if (typeof value === "boolean") return { label: value ? "Yes" : "No", className: value ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700" };
+  return { label: "Present", className: "bg-emerald-50 text-emerald-700" };
+}
+
+function getLoadingStep(seconds: number) {
+  if (seconds >= 8) return "Preparing report";
+  if (seconds >= 5) return "Checking mutation signals";
+  if (seconds >= 2) return "Extracting metadata";
+  return "Uploading file";
+}
+
+function DashboardMetric({ label, value, tone = "slate" }: { label: string; value: string; tone?: "slate" | "indigo" | "amber" | "emerald" }) {
+  const toneClass = {
+    slate: "bg-slate-50 text-slate-950",
+    indigo: "bg-indigo-50 text-indigo-700",
+    amber: "bg-amber-50 text-amber-700",
+    emerald: "bg-emerald-50 text-emerald-700",
+  }[tone];
+
+  return (
+    <div className={`rounded-lg border border-slate-200 p-4 ${toneClass}`}>
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-70">{label}</p>
+      <p className="mt-2 text-xl font-bold tracking-tight">{value}</p>
+    </div>
+  );
+}
+
+function RiskScoreRing({ score, level }: { score: number; level: string }) {
+  const radius = 42;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (Math.max(0, Math.min(score, 100)) / 100) * circumference;
+
+  return (
+    <div className="relative grid h-32 w-32 shrink-0 place-items-center">
+      <svg aria-hidden="true" className="h-32 w-32 -rotate-90" viewBox="0 0 112 112">
+        <circle cx="56" cy="56" fill="none" r={radius} stroke="#e2e8f0" strokeWidth="10" />
+        <circle
+          cx="56"
+          cy="56"
+          fill="none"
+          r={radius}
+          stroke={getRiskRingColor(level)}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          strokeWidth="10"
+        />
+      </svg>
+      <div className="absolute text-center">
+        <p className={`text-3xl font-black ${getRiskAccent(level)}`}>{score}</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">risk score</p>
+      </div>
+    </div>
+  );
+}
+
+function TabButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
+  return (
+    <button
+      className={`inline-flex items-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition ${
+        active ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:bg-white/70 hover:text-slate-700"
+      }`}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function UploadDropzone({
+  inputRef,
+  isDragging,
+  loading,
+  loadingSeconds = 0,
+  selectedName,
+  title,
+  help,
+  validationMessage,
+  onBrowse,
+  onDragLeave,
+  onDragOver,
+  onDrop,
+  onInputChange,
+}: {
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  isDragging: boolean;
+  loading: boolean;
+  loadingSeconds?: number;
+  selectedName?: string;
+  title: string;
+  help: string;
+  validationMessage?: string;
+  onBrowse: () => void;
+  onDragLeave: () => void;
+  onDragOver: (event: DragEvent<HTMLDivElement>) => void;
+  onDrop: (event: DragEvent<HTMLDivElement>) => void;
+  onInputChange: (event: ChangeEvent<HTMLInputElement>) => void;
+}) {
+  return (
+    <div
+      className={`flex min-h-[270px] items-center justify-center rounded-lg border-2 border-dashed bg-white px-6 py-12 text-center transition ${
+        isDragging ? "border-indigo-400 bg-indigo-50/60" : "border-slate-300 hover:border-indigo-300"
+      }`}
+      onDragLeave={onDragLeave}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      <input
+        ref={inputRef}
+        accept="application/pdf"
+        className="sr-only"
+        name="file"
+        onChange={onInputChange}
+        onClick={(event) => {
+          event.currentTarget.value = "";
+        }}
+        type="file"
+      />
+      <div className="flex max-w-md flex-col items-center">
+        {loading ? (
+          <SpinnerIcon className="mb-5 h-11 w-11 animate-spin text-indigo-600" />
+        ) : (
+          <UploadIcon className="mb-5 h-11 w-11 text-slate-400" />
+        )}
+        <p className="text-lg font-medium text-slate-700">{loading ? "Analyzing uploaded PDF..." : title}</p>
+        <p className="mt-2 text-sm text-slate-500">
+          {loading ? "Extracting metadata and checking for mutation signals. This can take a few seconds." : help}
+        </p>
+        <button
+          className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-indigo-600 px-5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-indigo-400"
+          disabled={loading}
+          onClick={onBrowse}
+          type="button"
+        >
+          <FileIcon className="h-4 w-4" />
+          {loading ? "Analyzing..." : "Browse Files"}
+        </button>
+        {selectedName && (
+          <p className="mt-4 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+            Selected: <span className="text-slate-900">{selectedName}</span>
+          </p>
+        )}
+        <p className="mt-3 text-xs font-medium text-slate-400">Accepted: PDF only · Max {MAX_UPLOAD_SIZE_MB}MB</p>
+        {validationMessage && (
+          <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+            {validationMessage}
+          </p>
+        )}
+        {loading && (
+          <div className="mt-5 w-full rounded-lg border border-indigo-100 bg-indigo-50 p-4 text-left">
+            <div className="flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-700">
+              <span>{getLoadingStep(loadingSeconds)}</span>
+              <span>{loadingSeconds >= 3 ? `${loadingSeconds}s elapsed` : "Please wait"}</span>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+              <div className="h-full w-2/3 animate-pulse rounded-full bg-indigo-600" />
+            </div>
+            <ul className="mt-3 space-y-1.5 text-xs text-indigo-700/80">
+              <li>• {loadingSeconds >= 0 ? "Uploading file" : "Waiting"}</li>
+              <li>• {loadingSeconds >= 2 ? "Extracting document metadata" : "Queued metadata extraction"}</li>
+              <li>• {loadingSeconds >= 5 ? "Checking mutation signals" : "Preparing mutation checks"}</li>
+              <li>• {loadingSeconds >= 8 ? "Preparing the analysis report" : "Report will appear automatically"}</li>
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const compareInputRefs = [useRef<HTMLInputElement | null>(null), useRef<HTMLInputElement | null>(null)] as const;
+  const [mode, setMode] = useState<Mode>("analyze");
   const [file, setFile] = useState<File | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [exportStatus, setExportStatus] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [compareFiles, setCompareFiles] = useState<[File | null, File | null]>([null, null]);
+  const [compareReports, setCompareReports] = useState<[Report | null, Report | null]>([null, null]);
+  const [compareLoading, setCompareLoading] = useState<[boolean, boolean]>([false, false]);
+  const [compareDragging, setCompareDragging] = useState<[boolean, boolean]>([false, false]);
+  const [compareError, setCompareError] = useState("");
+  const [showOnlyDifferences, setShowOnlyDifferences] = useState(false);
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const isAnyAnalysisLoading = loading || compareLoading.some(Boolean);
 
-  const handleAnalyze = async (event?: React.FormEvent<HTMLFormElement>) => {
-    event?.preventDefault();
+  useEffect(() => {
+    if (!isAnyAnalysisLoading) return;
+    const startedAt = Date.now();
+    const intervalId = window.setInterval(() => {
+      setLoadingSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [isAnyAnalysisLoading]);
 
-    if (loading) return;
+  const requestAnalysis = useCallback(async (selectedFile: File, source: string) => {
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const fileInfo = getFileDebugInfo(selectedFile);
 
-    if (!file) {
-      setError("Please select a PDF file first.");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-    setReport(null);
-
+    console.info(`${LOG_PREFIX} analysis requested`, { requestId, source, file: fileInfo });
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", selectedFile);
+    console.debug(`${LOG_PREFIX} form data prepared`, {
+      requestId,
+      endpoint: ANALYZE_ENDPOINT,
+      formKeys: Array.from(formData.keys()),
+    });
 
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(
-      () => controller.abort(),
-      REQUEST_TIMEOUT_MS
-    );
+    const timeoutId = window.setTimeout(() => {
+      console.warn(`${LOG_PREFIX} request timed out`, { requestId, timeoutMs: REQUEST_TIMEOUT_MS });
+      controller.abort();
+    }, REQUEST_TIMEOUT_MS);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/analyze`, {
+      console.info(`${LOG_PREFIX} sending analyze request`, { requestId, endpoint: ANALYZE_ENDPOINT, method: "POST" });
+      const response = await fetch(ANALYZE_ENDPOINT, {
         method: "POST",
         body: formData,
         signal: controller.signal,
       });
-
       const contentType = response.headers.get("content-type") ?? "";
-      const data = contentType.includes("application/json")
-        ? await response.json()
-        : await response.text();
+      console.info(`${LOG_PREFIX} analyze response received`, {
+        requestId,
+        ok: response.ok,
+        status: response.status,
+        contentType,
+      });
+      const data = contentType.includes("application/json") ? await response.json() : await response.text();
 
       if (!response.ok) {
         const detail =
           typeof data === "object" && data !== null && "detail" in data
             ? String(data.detail)
             : "Failed to analyze document.";
-
+        console.error(`${LOG_PREFIX} analyze response failed`, { requestId, status: response.status, detail });
         throw new Error(detail);
       }
 
-      setReport(data as Report);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        setError(
-          `The API did not respond within ${REQUEST_TIMEOUT_MS / 1000} seconds. Check that FastAPI is running at ${API_BASE_URL}.`
-        );
-      } else if (err instanceof TypeError) {
-        setError(
-          `Could not reach the API at ${API_BASE_URL}. Start the backend with "uvicorn app.main:app --reload" from the backend folder.`
-        );
-      } else {
-        setError(err instanceof Error ? err.message : "Something went wrong.");
-      }
+      const analyzedReport = data as Report;
+      console.info(`${LOG_PREFIX} analysis completed`, {
+        requestId,
+        source,
+        documentName: analyzedReport.document_name,
+        riskLevel: analyzedReport.metadata_risk_level,
+        riskScore: analyzedReport.metadata_risk_score,
+        findingsCount: analyzedReport.findings.length,
+      });
+      return analyzedReport;
     } finally {
       window.clearTimeout(timeoutId);
-      setLoading(false);
+      console.debug(`${LOG_PREFIX} analysis request finished`, { requestId, source });
     }
-  };
+  }, []);
 
-  const downloadJson = () => {
-    if (!report) return;
+  const analyzeFile = useCallback(
+    async (selectedFile: File) => {
+      setLoadingSeconds(0);
+      setLoading(true);
+      setError("");
+      setReport(null);
+      setIsDemoMode(false);
 
-    const blob = new Blob([JSON.stringify(report, null, 2)], {
-      type: "application/json",
+      try {
+        setReport(await requestAnalysis(selectedFile, "analyze"));
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          setError(`The API did not respond within ${REQUEST_TIMEOUT_MS / 1000} seconds. Try a smaller PDF.`);
+        } else if (err instanceof TypeError) {
+          setError(`Could not reach ${ANALYZE_ENDPOINT}. Please try again.`);
+        } else {
+          setError(err instanceof Error ? err.message : "Something went wrong.");
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [requestAnalysis]
+  );
+
+  const selectFile = useCallback(
+    (selectedFile: File | null, source: "input" | "drop" | "submit") => {
+      console.info(`${LOG_PREFIX} file selected`, {
+        source,
+        hasFile: Boolean(selectedFile),
+        file: selectedFile ? getFileDebugInfo(selectedFile) : null,
+      });
+      setFile(selectedFile);
+      setError("");
+      setReport(null);
+      setExportStatus("");
+      const validationMessage = validatePdfFile(selectedFile);
+      if (validationMessage) {
+        setError(validationMessage);
+        return;
+      }
+      void analyzeFile(selectedFile as File);
+    },
+    [analyzeFile]
+  );
+
+  const loadDemo = useCallback(() => {
+    setMode("analyze");
+    setFile(null);
+    setReport(DEMO_REPORT);
+    setError("");
+    setExportStatus("");
+    setIsDemoMode(true);
+  }, []);
+
+  const selectCompareFile = useCallback(
+    async (slot: CompareSlot, selectedFile: File | null, source: "input" | "drop") => {
+      console.info(`${LOG_PREFIX} compare file selected`, {
+        slot: slot + 1,
+        source,
+        hasFile: Boolean(selectedFile),
+        file: selectedFile ? getFileDebugInfo(selectedFile) : null,
+      });
+      setCompareFiles((current) => {
+        const next: [File | null, File | null] = [...current];
+        next[slot] = selectedFile;
+        return next;
+      });
+      setCompareReports((current) => {
+        const next: [Report | null, Report | null] = [...current];
+        next[slot] = null;
+        return next;
+      });
+      setCompareError("");
+      const validationMessage = validatePdfFile(selectedFile);
+      if (validationMessage) {
+        setCompareError(`File ${slot + 1}: ${validationMessage}`);
+        return;
+      }
+
+      setLoadingSeconds(0);
+      setCompareLoading((current) => {
+        const next: [boolean, boolean] = [...current];
+        next[slot] = true;
+        return next;
+      });
+
+      try {
+        const analyzedReport = await requestAnalysis(selectedFile as File, `compare-${slot + 1}`);
+        setCompareReports((current) => {
+          const next: [Report | null, Report | null] = [...current];
+          next[slot] = analyzedReport;
+          return next;
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to analyze comparison file.";
+        console.error(`${LOG_PREFIX} compare analysis failed`, { slot: slot + 1, error: err });
+        setCompareError(`File ${slot + 1}: ${message}`);
+      } finally {
+        setCompareLoading((current) => {
+          const next: [boolean, boolean] = [...current];
+          next[slot] = false;
+          return next;
+        });
+      }
+    },
+    [requestAnalysis]
+  );
+
+  const compareRows = useMemo<CompareRow[]>(() => {
+    const [leftReport, rightReport] = compareReports;
+    if (!leftReport || !rightReport) return [];
+    return compareKeys.map((key) => {
+      const left = formatValue(leftReport.extracted_metadata[key]);
+      const right = formatValue(rightReport.extracted_metadata[key]);
+      return { key, left, right, matches: left === right };
     });
+  }, [compareReports]);
 
+  const differencesCount = compareRows.filter((row) => !row.matches).length;
+  const matchesCount = compareRows.length - differencesCount;
+  const filteredCompareRows = showOnlyDifferences ? compareRows.filter((row) => !row.matches) : compareRows;
+  const riskDelta = compareReports[0] && compareReports[1] ? Math.abs(compareReports[0].metadata_risk_score - compareReports[1].metadata_risk_score) : 0;
+
+  const downloadBlob = (content: string, filename: string, type: string) => {
+    const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${report.document_name}-metadata-report.json`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const getRiskClass = (level: string) => {
-    if (level === "High") return "bg-red-100 text-red-700 border-red-300";
-    if (level === "Medium") return "bg-yellow-100 text-yellow-700 border-yellow-300";
-    return "bg-green-100 text-green-700 border-green-300";
+  const buildReportSummary = (currentReport: Report) => [
+    `Metadata report: ${currentReport.document_name}`,
+    `Risk: ${currentReport.metadata_risk_level} (${currentReport.metadata_risk_score}/100)`,
+    `Findings: ${currentReport.findings.length}`,
+    `Summary: ${currentReport.summary}`,
+    `Recommended action: ${currentReport.recommended_action}`,
+  ].join("\n");
+
+  const downloadJson = () => {
+    if (!report) return;
+    downloadBlob(JSON.stringify(report, null, 2), `${report.document_name}-metadata-report.json`, "application/json");
+    setExportStatus("JSON report downloaded.");
+  };
+
+  const downloadText = () => {
+    if (!report) return;
+    const findingsText = report.findings.length
+      ? report.findings.map((finding) => `- [${finding.severity}] ${finding.title}: ${finding.explanation}`).join("\n")
+      : "- No suspicious metadata indicators were detected.";
+    downloadBlob(`${buildReportSummary(report)}\n\nFindings:\n${findingsText}\n`, `${report.document_name}-metadata-report.txt`, "text/plain");
+    setExportStatus("Text report downloaded.");
+  };
+
+  const copySummary = async () => {
+    if (!report) return;
+    await navigator.clipboard.writeText(buildReportSummary(report));
+    setExportStatus("Summary copied to clipboard.");
+  };
+
+  const switchMode = (nextMode: Mode) => {
+    console.info(`${LOG_PREFIX} mode changed`, { nextMode });
+    setMode(nextMode);
+    setError("");
+    setCompareError("");
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 px-6 py-10">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Document Metadata Mutation Checker
-          </h1>
-          <p className="mt-2 text-gray-600">
-            Upload a PDF file to extract metadata and identify possible metadata mutation indicators.
-          </p>
-        </div>
-
-        <form
-          action={`${API_BASE_URL}/analyze`}
-          method="post"
-          encType="multipart/form-data"
-          onSubmit={handleAnalyze}
-          className="rounded-xl border bg-white p-6 shadow-sm"
-        >
-          <label className="block text-sm font-medium text-gray-700">
-            Upload PDF Document
-          </label>
-
-          <input
-            type="file"
-            name="file"
-            accept="application/pdf"
-            className="mt-3 block w-full rounded-lg border border-gray-300 p-3"
-            onChange={(e) => {
-              setFile(e.target.files?.[0] || null);
-              setError("");
-            }}
-          />
-
-          {file && (
-            <p className="mt-3 text-sm text-gray-600">
-              Selected: {file.name}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-4 rounded-lg bg-black px-5 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? "Analyzing..." : "Analyze Document"}
-          </button>
-
-          {loading && (
-            <p className="mt-3 text-sm text-gray-500">
-              Calling {API_BASE_URL}/analyze...
-            </p>
-          )}
-
-          {error && (
-            <p className="mt-4 rounded-lg bg-red-50 p-3 text-red-700">
-              {error}
-            </p>
-          )}
-        </form>
-
-        {report && (
-          <div className="mt-8 space-y-6">
-            <div className="rounded-xl border bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    Analysis Report
-                  </h2>
-                  <p className="text-gray-600">{report.document_name}</p>
-                </div>
-
-                <button
-                  onClick={downloadJson}
-                  className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-100"
-                >
-                  Download JSON
-                </button>
+    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-950">
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex min-h-[76px] max-w-5xl flex-col gap-4 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <ShieldIcon className="h-8 w-8 shrink-0 text-indigo-600" />
+            <div>
+              <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-950">
+                Document Metadata Mutation Checker
+              </h1>
+              <p className="mt-0.5 text-xs text-slate-500">Analyze metadata consistency & compare documents</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {["Next.js", "TypeScript", "Tailwind CSS", "Node.js"].map((tag) => (
+                  <span key={tag} className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                    {tag}
+                  </span>
+                ))}
               </div>
-
-              <div
-                className={`mt-5 inline-block rounded-full border px-4 py-2 font-semibold ${getRiskClass(
-                  report.metadata_risk_level
-                )}`}
-              >
-                {report.metadata_risk_level} Risk - Score {report.metadata_risk_score}
-              </div>
-
-              <p className="mt-4 text-gray-700">{report.summary}</p>
-              <p className="mt-2 text-sm text-gray-500">{report.disclaimer}</p>
-            </div>
-
-            <div className="rounded-xl border bg-white p-6 shadow-sm">
-              <h3 className="text-lg font-semibold">Extracted Metadata</h3>
-
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full border-collapse text-sm">
-                  <tbody>
-                    {Object.entries(report.extracted_metadata).map(([key, value]) => (
-                      <tr key={key} className="border-b">
-                        <td className="w-1/3 py-2 font-medium text-gray-700">
-                          {key}
-                        </td>
-                        <td className="py-2 text-gray-600">
-                          {String(value ?? "N/A")}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="rounded-xl border bg-white p-6 shadow-sm">
-              <h3 className="text-lg font-semibold">Findings</h3>
-
-              {report.findings.length === 0 ? (
-                <p className="mt-3 text-gray-600">
-                  No suspicious metadata indicators were detected.
-                </p>
-              ) : (
-                <div className="mt-4 space-y-4">
-                  {report.findings.map((finding, index) => (
-                    <div key={index} className="rounded-lg border p-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-semibold">{finding.title}</h4>
-                        <span className="rounded-full bg-gray-100 px-3 py-1 text-sm">
-                          {finding.severity}
-                        </span>
-                      </div>
-
-                      <p className="mt-2 text-sm text-gray-600">
-                        Confidence: {Math.round(finding.confidence * 100)}%
-                      </p>
-
-                      <p className="mt-2 text-gray-700">
-                        {finding.explanation}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-xl border bg-white p-6 shadow-sm">
-              <h3 className="text-lg font-semibold">Recommended Action</h3>
-              <p className="mt-2 text-gray-700">{report.recommended_action}</p>
             </div>
           </div>
+
+          <div className="inline-flex w-fit items-center gap-1 rounded-lg bg-slate-100 p-1">
+            <TabButton active={mode === "analyze"} onClick={() => switchMode("analyze")}>
+              <EyeIcon className="h-4 w-4" />
+              Analyze
+            </TabButton>
+            <TabButton active={mode === "compare"} onClick={() => switchMode("compare")}>
+              <CompareIcon className="h-4 w-4" />
+              Compare
+            </TabButton>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">
+        {mode === "analyze" ? (
+          <>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!file) {
+                  setError(validatePdfFile(file));
+                  return;
+                }
+                selectFile(file, "submit");
+              }}
+            >
+              <UploadDropzone
+                help="Supports PDF files up to 8MB. Analysis starts automatically."
+                inputRef={inputRef}
+                isDragging={isDragging}
+                loading={loading}
+                loadingSeconds={loadingSeconds}
+                onBrowse={() => inputRef.current?.click()}
+                onDragLeave={() => setIsDragging(false)}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setIsDragging(false);
+                  selectFile(event.dataTransfer.files?.[0] ?? null, "drop");
+                }}
+                onInputChange={(event) => selectFile(event.target.files?.[0] ?? null, "input")}
+                selectedName={file?.name}
+                title="Drag & drop your file here"
+                validationMessage={error}
+              />
+            </form>
+
+
+            {!report && !loading && (
+              <p className="mt-4 text-center text-sm text-slate-500">
+                Don&apos;t have a PDF handy?{" "}
+                <button
+                  className="font-medium text-indigo-600 underline underline-offset-2 hover:text-indigo-700"
+                  onClick={loadDemo}
+                  type="button"
+                >
+                  Try with a sample document
+                </button>
+              </p>
+            )}
+
+            {isDemoMode && report && (
+              <div className="mt-5 flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+                <span className="font-semibold">Demo mode</span>
+                <span className="text-amber-700">Showing pre-loaded sample analysis. Upload your own PDF to analyze a real document.</span>
+                <button
+                  className="ml-auto text-xs font-medium text-amber-700 underline underline-offset-2 hover:text-amber-900"
+                  onClick={() => { setReport(null); setIsDemoMode(false); }}
+                  type="button"
+                >
+                  Clear demo
+                </button>
+              </div>
+            )}
+
+            {report && <ReportView exportStatus={exportStatus} onCopySummary={copySummary} onDownloadJson={downloadJson} onDownloadText={downloadText} report={report} />}
+          </>
+        ) : (
+          <>
+            <div className="grid gap-5 lg:grid-cols-2">
+              {[0, 1].map((index) => {
+                const slot = index as CompareSlot;
+                return (
+                  <UploadDropzone
+                    key={slot}
+                    help="Upload a PDF to compare extracted metadata."
+                    inputRef={compareInputRefs[slot]}
+                    isDragging={compareDragging[slot]}
+                    loading={compareLoading[slot]}
+                    loadingSeconds={loadingSeconds}
+                    onBrowse={() => compareInputRefs[slot].current?.click()}
+                    onDragLeave={() =>
+                      setCompareDragging((current) => {
+                        const next: [boolean, boolean] = [...current];
+                        next[slot] = false;
+                        return next;
+                      })
+                    }
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setCompareDragging((current) => {
+                        const next: [boolean, boolean] = [...current];
+                        next[slot] = true;
+                        return next;
+                      });
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      setCompareDragging((current) => {
+                        const next: [boolean, boolean] = [...current];
+                        next[slot] = false;
+                        return next;
+                      });
+                      void selectCompareFile(slot, event.dataTransfer.files?.[0] ?? null, "drop");
+                    }}
+                    onInputChange={(event) => void selectCompareFile(slot, event.target.files?.[0] ?? null, "input")}
+                    selectedName={compareFiles[slot]?.name}
+                    title={`Upload ${slot === 0 ? "original" : "comparison"} PDF`}
+                  />
+                );
+              })}
+            </div>
+
+            {compareError && (
+              <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                {compareError}
+              </div>
+            )}
+
+            {compareReports[0] && compareReports[1] && (
+              <section className="mt-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Comparison dashboard</p>
+                    <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">
+                      {differencesCount === 0 ? "Metadata matches" : `${differencesCount} metadata differences found`}
+                    </h2>
+                    <p className="mt-2 text-sm text-slate-500">
+                      {compareReports[0].document_name} compared with {compareReports[1].document_name}
+                    </p>
+                  </div>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
+                    <input
+                      checked={showOnlyDifferences}
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      onChange={(event) => setShowOnlyDifferences(event.target.checked)}
+                      type="checkbox"
+                    />
+                    Show only differences
+                  </label>
+                </div>
+
+                <div className="mt-6 grid gap-3 sm:grid-cols-4">
+                  <DashboardMetric label="Compared fields" tone="indigo" value={`${compareRows.length}`} />
+                  <DashboardMetric label="Matching" tone="emerald" value={`${matchesCount}`} />
+                  <DashboardMetric label="Different" tone={differencesCount ? "amber" : "emerald"} value={`${differencesCount}`} />
+                  <DashboardMetric label="Risk delta" tone={riskDelta ? "amber" : "emerald"} value={`${riskDelta}`} />
+                </div>
+
+                <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                    <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Field</th>
+                        <th className="px-4 py-3 font-semibold">Original</th>
+                        <th className="px-4 py-3 font-semibold">Comparison</th>
+                        <th className="px-4 py-3 font-semibold">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredCompareRows.length === 0 ? (
+                        <tr>
+                          <td className="px-4 py-5 text-center text-sm font-medium text-slate-500" colSpan={4}>
+                            No differences to show.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredCompareRows.map((row) => (
+                          <tr className={`border-t border-slate-200 transition ${row.matches ? "hover:bg-slate-50" : "bg-amber-50/40 hover:bg-amber-50"}`} key={row.key}>
+                            <td className="bg-slate-50 px-4 py-3 font-medium text-slate-700">{formatMetadataLabel(row.key)}</td>
+                            <td className="px-4 py-3 text-slate-600">{row.left}</td>
+                            <td className="px-4 py-3 text-slate-600">{row.right}</td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                  row.matches ? "bg-emerald-50 text-emerald-700" : "bg-amber-100 text-amber-800"
+                                }`}
+                              >
+                                {row.matches ? "Match" : "Different"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+          </>
+        )}
+
+      </main>
+
+      <footer className="border-t border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-5xl justify-center px-6 py-6 text-sm text-slate-500 sm:justify-end">
+          <div className="flex flex-wrap gap-3">
+            <a className="font-medium text-slate-700 transition hover:text-indigo-600" href="https://github.com/Damika-Anupama/Metadata-Mutation-Checker" rel="noreferrer" target="_blank">
+              GitHub repo
+            </a>
+            <a className="font-medium text-slate-700 transition hover:text-indigo-600" href="https://github.com/Damika-Anupama" rel="noreferrer" target="_blank">
+              Developer profile
+            </a>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function ReportView({
+  report,
+  exportStatus,
+  onCopySummary,
+  onDownloadJson,
+  onDownloadText,
+}: {
+  report: Report;
+  exportStatus: string;
+  onCopySummary: () => void;
+  onDownloadJson: () => void;
+  onDownloadText: () => void;
+}) {
+  return (
+    <section className="mt-8 grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Analysis dashboard</p>
+            <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">{report.document_name}</h2>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" onClick={onCopySummary} type="button">
+              Copy summary
+            </button>
+            <button className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" onClick={onDownloadText} type="button">
+              <DownloadIcon className="h-4 w-4" />
+              TXT
+            </button>
+            <button className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700" onClick={onDownloadJson} type="button">
+              <DownloadIcon className="h-4 w-4" />
+              JSON
+            </button>
+          </div>
+        </div>
+        {exportStatus && <p className="mt-3 text-sm font-medium text-emerald-700">{exportStatus}</p>}
+
+        <div className="mt-6 flex flex-col gap-6 rounded-xl border border-slate-200 bg-slate-50 p-5 sm:flex-row sm:items-center">
+          <RiskScoreRing level={report.metadata_risk_level} score={report.metadata_risk_score} />
+          <div className="min-w-0 flex-1">
+            <div className={`inline-flex rounded-full border px-3.5 py-1.5 text-sm font-semibold ${getRiskClass(report.metadata_risk_level)}`}>
+              {report.metadata_risk_level} metadata risk
+            </div>
+            <p className="mt-4 leading-7 text-slate-600">{report.summary}</p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <DashboardMetric label="Findings" tone={report.findings.length ? "amber" : "emerald"} value={`${report.findings.length}`} />
+          <DashboardMetric label="File size" value={formatBytes(report.extracted_metadata.file_size_bytes)} />
+          <DashboardMetric label="Pages" value={formatValue(report.extracted_metadata.page_count)} />
+          <DashboardMetric label="Encrypted" tone={report.extracted_metadata.is_encrypted ? "amber" : "emerald"} value={report.extracted_metadata.is_encrypted ? "Yes" : "No"} />
+        </div>
+
+        <div className="mt-6 rounded-lg border border-indigo-100 bg-indigo-50 p-5">
+          <h3 className="font-semibold text-indigo-950">Recommended action</h3>
+          <p className="mt-2 leading-7 text-indigo-900/75">{report.recommended_action}</p>
+        </div>
+        <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm leading-6 text-slate-500">{report.disclaimer}</p>
+      </div>
+
+      <div className="space-y-6">
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-bold text-slate-950">Findings</h3>
+          {report.findings.length === 0 ? (
+            <p className="mt-4 rounded-lg bg-emerald-50 p-4 text-sm font-medium text-emerald-700">No suspicious metadata indicators were detected.</p>
+          ) : (
+            <div className="mt-4 grid gap-3">
+              {report.findings.map((finding, index) => (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4" key={`${finding.title}-${index}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h4 className="font-semibold text-slate-950">{finding.title}</h4>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm">{finding.severity}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-500">{finding.category} · {Math.round(finding.confidence * 100)}% confidence</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{finding.explanation}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <MetadataTable metadata={report.extracted_metadata} />
+      </div>
+    </section>
+  );
+}
+
+
+function MetadataTable({ metadata }: { metadata: Record<string, unknown> }) {
+  const [query, setQuery] = useState("");
+  const rows = Object.entries(metadata).map(([key, value]) => ({ key, value, group: getMetadataGroup(key) }));
+  const filteredRows = rows.filter((row) => {
+    const text = `${row.key} ${row.group} ${formatValue(row.value)}`.toLowerCase();
+    return text.includes(query.trim().toLowerCase());
+  });
+  const groups = Array.from(new Set(filteredRows.map((row) => row.group)));
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-lg font-bold text-slate-950">Extracted metadata</h3>
+          <p className="mt-1 text-sm text-slate-500">Grouped fields with searchable values and missing-data flags.</p>
+        </div>
+        <label className="relative block sm:w-64">
+          <span className="sr-only">Search metadata</span>
+          <input
+            className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search metadata..."
+            type="search"
+            value={query}
+          />
+        </label>
+      </div>
+
+      <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
+        {filteredRows.length === 0 ? (
+          <p className="bg-slate-50 px-4 py-5 text-sm font-medium text-slate-500">No metadata fields match your search.</p>
+        ) : (
+          groups.map((group) => (
+            <div key={group}>
+              <div className="bg-slate-100 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{group}</div>
+              <table className="w-full border-collapse text-left text-sm">
+                <tbody>
+                  {filteredRows
+                    .filter((row) => row.group === group)
+                    .map((row) => {
+                      const status = getMetadataStatus(row.value);
+                      return (
+                        <tr className="border-t border-slate-200 transition hover:bg-indigo-50/30" key={row.key}>
+                          <td className="w-2/5 bg-slate-50 px-4 py-3 font-medium text-slate-700">{formatMetadataLabel(row.key)}</td>
+                          <td className="px-4 py-3 text-slate-600">{formatValue(row.value)}</td>
+                          <td className="px-4 py-3 text-right">
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${status.className}`}>{status.label}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          ))
         )}
       </div>
-    </main>
+    </div>
   );
 }

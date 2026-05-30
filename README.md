@@ -1,142 +1,114 @@
 # Document Metadata Mutation Checker
 
-## Overview
+Full-stack application for analyzing PDF document metadata and detecting potential mutation signals. Uploads a PDF, extracts metadata, runs rule-based checks, and returns a scored risk report with detailed findings.
 
-This project is a full-stack application enabling users to upload PDF documents for metadata analysis. It extracts metadata and performs rule-based checks to highlight potential indicators of metadata mutations, though it does not confirm document tampering and only flags signals for manual review.
+**Live demo:** [metadata-mutation-checker-chi.vercel.app](https://metadata-mutation-checker-chi.vercel.app/)
 
 ## Demo
 
 ![Metadata Mutation Checker demo](assets/metadata-mutation-checker-demo.gif)
 
-This short demo shows the PDF upload flow, metadata extraction, mutation signal checks, risk summary, and generated findings.
-
 ## Tech Stack
 
-- Python
-- FastAPI
-- pypdf
-- React
-- Next.js
-- Tailwind CSS
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS |
+| Backend | Python 3.11, FastAPI, pypdf |
+| Infrastructure | Docker, Docker Compose |
 
 ## Features
 
-- PDF file upload
-- Metadata extraction
-- Rule-based suspicious metadata checks
-- Risk score generation
-- Risk level classification
-- Findings with severity and confidence
-- Recommended action
-- Downloadable JSON report
+- PDF upload with drag & drop
+- Metadata extraction (author, creator, producer, dates, encryption, page count, etc.)
+- Rule-based mutation signal checks across 4 categories: dates, software, missing fields, structure
+- Risk score (0–100) with Low / Medium / High classification
+- Findings panel with severity, confidence, and explanations
+- Side-by-side document comparison mode
+- Export report as JSON or TXT
+- Searchable metadata table
 
-## Metadata Fields Extracted
+## Project Structure
 
-- File name
-- File size
-- File type
-- PDF version
-- Created date
-- Modified date
-- Author
-- Creator
-- Producer
-- Title
-- Subject
-- Page count
-- Encryption status
+```
+.
+├── backend/          # Python FastAPI — metadata extraction & risk scoring
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── metadata_extractor.py
+│   │   ├── mutation_checker.py
+│   │   └── risk_scoring.py
+│   ├── Dockerfile
+│   └── requirements.txt
+├── frontend/         # Next.js — upload UI, report view, compare mode
+│   ├── app/
+│   ├── lib/
+│   ├── Dockerfile
+│   └── .env.example
+├── docker-compose.yml
+└── assets/
+```
 
-## Rules Implemented
+## Branches
 
-### Date Checks
+| Branch | Description |
+|---|---|
+| `main` | Full-stack source — Python backend + Next.js frontend + Docker |
+| `frontend-demo` | Self-contained Next.js demo deployed on Vercel (no Python required) |
 
-- Modified date exists but created date is missing
-- Modified date is earlier than created date
-- Modified date is much later than created date
-- Created or modified date format is unusual
-- Created and modified dates are missing
+## Run with Docker
 
-### Software Checks
+```bash
+docker compose up --build
+```
 
-- Creator and producer mismatch
-- Metadata references editing/export tools such as Acrobat, Preview, Photoshop, Illustrator, Canva, scanner software, or online PDF editors
+Frontend: http://localhost:3000  
+Backend API: http://localhost:8000
 
-### Missing Metadata Checks
-
-- Missing author
-- Missing title
-
-### Structural Checks
-
-- PDF encryption status
-- Zero page count
-
-## Risk Scoring Logic
-
-Each finding contributes to the final score based on severity and confidence.
-
-Severity weights:
-
-- Low: 10
-- Medium: 25
-- High: 45
-
-The score is adjusted if multiple categories of findings are found together.
-
-Weak findings alone are capped so that harmless metadata issues do not create a high-risk result.
-
-Risk levels:
-
-- 0–30: Low
-- 31–65: Medium
-- 66–100: High
-
-## Setup Instructions
+## Local Development
 
 ### Backend
 
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
-````
-
-Backend runs at:
-
-```text
-http://127.0.0.1:8000
 ```
+
+Backend runs at `http://localhost:8000`.
 
 ### Frontend
 
 ```bash
 cd frontend
+cp .env.example .env.local      # sets BACKEND_URL=http://localhost:8000
 npm install
 npm run dev
 ```
 
-Frontend runs at:
+Frontend runs at `http://localhost:3000`.
 
-```text
-http://localhost:3000
-```
+## Risk Scoring Logic
 
-## Limitations
+Each finding contributes to the final score based on severity and confidence.
 
-* This tool mainly supports PDF files.
-* Metadata indicators are not proof of tampering.
-* Some PDF generators do not save complete metadata.
-* Scanned PDFs may contain limited metadata.
-* Deep forensic checks are outside the scope of this assignment.
+| Severity | Weight |
+|---|---|
+| Low | 10 |
+| Medium | 25 |
+| High | 45 |
 
-## Future Improvements
+Multiple findings across different categories add a category bonus. Weak findings alone are capped to avoid false-positive high-risk results.
 
-* Support JPG and PNG EXIF metadata
-* Support DOCX metadata extraction
-* Detect PDF incremental updates
-* Compare two documents
-* Generate a PDF summary report
-* Show raw metadata and interpreted metadata separately
-* Add technical and simple explanation modes
+Risk levels: **Low** (0–30) · **Medium** (31–65) · **High** (66–100)
+
+## Rules Implemented
+
+**Date checks** — modified before created, large creation-to-modification gap, unusual date formats, both dates missing
+
+**Software checks** — creator/producer mismatch, references to editing tools (Acrobat, Preview, Photoshop, Illustrator, Canva, online PDF editors)
+
+**Missing metadata** — blank author, blank title
+
+**Structural checks** — encryption status, zero page count
