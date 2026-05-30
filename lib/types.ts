@@ -45,3 +45,12 @@ export type HistoryEntry = {
   savedAt: number;
   report: Report;
 };
+
+export type AnnotationStatus = "confirmed" | "false_positive";
+
+export type FindingAnnotation = {
+  status: AnnotationStatus | null;
+  note: string;
+};
+
+export type AnnotationMap = Record<string, FindingAnnotation>;

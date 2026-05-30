@@ -2,7 +2,7 @@
 
 import type { ChangeEvent, DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { BatchItem, BatchStatus, CompareRow, CompareSlot, HistoryEntry, IconProps, Mode, Report } from "@/lib/types";
+import type { AnnotationMap, AnnotationStatus, BatchItem, BatchStatus, CompareRow, CompareSlot, Finding, FindingAnnotation, HistoryEntry, IconProps, Mode, Report } from "@/lib/types";
 
 const ANALYZE_ENDPOINT = "/api/analyze";
 const REQUEST_TIMEOUT_MS = 30000;
@@ -346,6 +346,125 @@ function HistoryIcon({ className }: IconProps) {
 }
 
 const HISTORY_KEY = "mmc-history";
+const ANNOTATIONS_KEY = "mmc-annotations";
+
+function annotationKey(documentName: string, findingTitle: string): string {
+  return `${documentName}::${findingTitle}`;
+}
+
+function useAnnotations() {
+  const [map, setMap] = useState<AnnotationMap>({});
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(ANNOTATIONS_KEY);
+      if (raw) setMap(JSON.parse(raw) as AnnotationMap);
+    } catch {}
+  }, []);
+
+  const get = useCallback((key: string): FindingAnnotation => {
+    return map[key] ?? { status: null, note: "" };
+  }, [map]);
+
+  const set = useCallback((key: string, annotation: FindingAnnotation) => {
+    setMap(prev => {
+      const next = { ...prev, [key]: annotation };
+      try { localStorage.setItem(ANNOTATIONS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  return { get, set };
+}
+
+function FindingCard({
+  finding,
+  documentName,
+  annotations,
+}: {
+  finding: Finding;
+  documentName: string;
+  annotations: ReturnType<typeof useAnnotations>;
+}) {
+  const key = annotationKey(documentName, finding.title);
+  const annotation = annotations.get(key);
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteText, setNoteText] = useState(annotation.note);
+
+  const toggleStatus = (status: AnnotationStatus) => {
+    annotations.set(key, { ...annotation, status: annotation.status === status ? null : status });
+  };
+
+  const saveNote = () => {
+    annotations.set(key, { ...annotation, note: noteText.trim() });
+    setEditingNote(false);
+  };
+
+  const isConfirmed = annotation.status === "confirmed";
+  const isFalsePositive = annotation.status === "false_positive";
+
+  return (
+    <div className={`rounded-lg border p-4 transition ${isConfirmed ? "border-emerald-200 bg-emerald-50/40" : isFalsePositive ? "border-slate-200 bg-slate-50 opacity-60" : "border-slate-200 bg-slate-50"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h4 className="font-semibold text-slate-950">{finding.title}</h4>
+        <div className="flex items-center gap-2">
+          {isConfirmed && <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">Confirmed</span>}
+          {isFalsePositive && <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-semibold text-slate-500">False positive</span>}
+          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm">{finding.severity}</span>
+        </div>
+      </div>
+      <p className="mt-2 text-sm text-slate-500">{finding.category} · {Math.round(finding.confidence * 100)}% confidence</p>
+      <p className="mt-2 text-sm leading-6 text-slate-600">{finding.explanation}</p>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200/70 pt-3">
+        <button
+          className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${isConfirmed ? "bg-emerald-100 text-emerald-700" : "border border-slate-200 bg-white text-slate-500 hover:bg-emerald-50 hover:text-emerald-700"}`}
+          onClick={() => toggleStatus("confirmed")}
+          type="button"
+        >
+          ✓ Confirmed
+        </button>
+        <button
+          className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${isFalsePositive ? "bg-slate-200 text-slate-600" : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-100"}`}
+          onClick={() => toggleStatus("false_positive")}
+          type="button"
+        >
+          ✗ False positive
+        </button>
+        <button
+          className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-50"
+          onClick={() => { setNoteText(annotation.note); setEditingNote(v => !v); }}
+          type="button"
+        >
+          {annotation.note ? "✎ Edit note" : "+ Note"}
+        </button>
+      </div>
+
+      {annotation.note && !editingNote && (
+        <p className="mt-2 rounded-md border border-slate-100 bg-white/80 px-3 py-2 text-xs italic text-slate-600">
+          {annotation.note}
+        </p>
+      )}
+
+      {editingNote && (
+        <div className="mt-2 space-y-1.5">
+          <textarea
+            autoFocus
+            className="w-full resize-none rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+            onChange={e => setNoteText(e.target.value)}
+            placeholder="Add a note about this finding..."
+            rows={2}
+            value={noteText}
+          />
+          <div className="flex gap-2">
+            <button className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-indigo-700" onClick={saveNote} type="button">Save</button>
+            <button className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-50" onClick={() => { setNoteText(annotation.note); setEditingNote(false); }} type="button">Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 const HISTORY_MAX = 50;
 
 function formatRelativeTime(ts: number): string {
@@ -1609,6 +1728,7 @@ function ReportView({
   onDownloadJson: () => void;
   onDownloadText: () => void;
 }) {
+  const annotations = useAnnotations();
   return (
     <section className="mt-8 grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1667,14 +1787,12 @@ function ReportView({
           ) : (
             <div className="mt-4 grid gap-3">
               {report.findings.map((finding, index) => (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4" key={`${finding.title}-${index}`}>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h4 className="font-semibold text-slate-950">{finding.title}</h4>
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm">{finding.severity}</span>
-                  </div>
-                  <p className="mt-2 text-sm text-slate-500">{finding.category} · {Math.round(finding.confidence * 100)}% confidence</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">{finding.explanation}</p>
-                </div>
+                <FindingCard
+                  annotations={annotations}
+                  documentName={report.document_name}
+                  finding={finding}
+                  key={`${finding.title}-${index}`}
+                />
               ))}
             </div>
           )}
