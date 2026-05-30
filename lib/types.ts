@@ -19,7 +19,7 @@ export type Report = {
 };
 
 export type IconProps = { className?: string };
-export type Mode = "analyze" | "compare";
+export type Mode = "analyze" | "compare" | "batch";
 export type CompareSlot = 0 | 1;
 
 export type CompareRow = {
@@ -27,4 +27,15 @@ export type CompareRow = {
   left: string;
   right: string;
   matches: boolean;
+};
+
+export type BatchStatus = "pending" | "analyzing" | "done" | "error";
+
+export type BatchItem = {
+  id: string;
+  file: File;
+  status: BatchStatus;
+  report: Report | null;
+  error: string;
+  expanded: boolean;
 };

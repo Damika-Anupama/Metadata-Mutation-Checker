@@ -2,7 +2,7 @@
 
 import type { ChangeEvent, DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CompareRow, CompareSlot, IconProps, Mode, Report } from "@/lib/types";
+import type { BatchItem, BatchStatus, CompareRow, CompareSlot, IconProps, Mode, Report } from "@/lib/types";
 
 const ANALYZE_ENDPOINT = "/api/analyze";
 const REQUEST_TIMEOUT_MS = 30000;
@@ -130,6 +130,50 @@ function CompareIcon({ className }: IconProps) {
       <path d="M4 4h6M4 8h6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
     </svg>
   );
+}
+
+function LayersIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M2 8.5 12 3.75 22 8.5 12 13.25 2 8.5Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
+      <path d="m2 13 10 4.75L22 13M2 17.5l10 4.75 10-4.75" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path d="m6 9 6 6 6-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function TrashIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function getDateGapLabel(report: Report): string {
+  const created = report.extracted_metadata.created_date as string | null;
+  const modified = report.extracted_metadata.modified_date as string | null;
+  if (!created || !modified) return "—";
+  const diff = new Date(modified).getTime() - new Date(created).getTime();
+  if (diff < 0) return "Modified before created";
+  const days = Math.floor(diff / 86400000);
+  if (days === 0) return "Same day";
+  if (days < 30) return `${days}d`;
+  if (days < 365) return `${Math.floor(days / 30)}mo`;
+  return `${(days / 365).toFixed(1)}yr`;
+}
+
+function getBatchRiskBadge(level: string) {
+  if (level === "High") return { label: "High", className: "bg-red-100 text-red-700" };
+  if (level === "Medium") return { label: "Medium", className: "bg-amber-100 text-amber-700" };
+  return { label: "Low", className: "bg-emerald-100 text-emerald-700" };
 }
 
 function UploadIcon({ className }: IconProps) {
@@ -384,6 +428,230 @@ function UploadDropzone({
   );
 }
 
+function BatchDropzone({
+  inputRef,
+  isDragging,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onInputChange,
+  onBrowse,
+  pending,
+}: {
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  isDragging: boolean;
+  onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragLeave: () => void;
+  onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
+  onInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onBrowse: () => void;
+  pending: number;
+}) {
+  return (
+    <div
+      className={`flex min-h-[180px] items-center justify-center rounded-lg border-2 border-dashed bg-white px-6 py-10 text-center transition ${
+        isDragging ? "border-indigo-400 bg-indigo-50/60" : "border-slate-300 hover:border-indigo-300"
+      }`}
+      onDragLeave={onDragLeave}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      <input ref={inputRef} accept="application/pdf" className="sr-only" multiple onChange={onInputChange} type="file" />
+      <div className="flex max-w-sm flex-col items-center">
+        <LayersIcon className="mb-4 h-10 w-10 text-slate-400" />
+        <p className="text-base font-medium text-slate-700">
+          {pending > 0 ? `${pending} file${pending > 1 ? "s" : ""} queued` : "Drop multiple PDFs here"}
+        </p>
+        <p className="mt-1 text-sm text-slate-500">All files are analyzed in parallel — up to 8 MB each</p>
+        <button
+          className="mt-4 inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700"
+          onClick={onBrowse}
+          type="button"
+        >
+          <UploadIcon className="h-4 w-4" />
+          Add PDFs
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BatchTable({
+  items,
+  onToggleExpand,
+  onClear,
+  onRemove,
+  onRunPending,
+  exportStatuses,
+  onBatchCopySummary,
+  onBatchDownloadJson,
+  onBatchDownloadText,
+}: {
+  items: BatchItem[];
+  onToggleExpand: (id: string) => void;
+  onClear: () => void;
+  onRemove: (id: string) => void;
+  onRunPending: () => void;
+  exportStatuses: Record<string, string>;
+  onBatchCopySummary: (id: string) => void;
+  onBatchDownloadJson: (id: string) => void;
+  onBatchDownloadText: (id: string) => void;
+}) {
+  const high = items.filter(i => i.report?.metadata_risk_level === "High").length;
+  const medium = items.filter(i => i.report?.metadata_risk_level === "Medium").length;
+  const low = items.filter(i => i.report?.metadata_risk_level === "Low").length;
+  const pending = items.filter(i => i.status === "pending").length;
+  const analyzing = items.filter(i => i.status === "analyzing").length;
+  const errors = items.filter(i => i.status === "error").length;
+
+  return (
+    <div className="mt-6 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-5 py-3.5 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3 text-sm font-medium">
+          <span className="text-slate-700">{items.length} document{items.length !== 1 ? "s" : ""}</span>
+          {high > 0 && <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs text-red-700">{high} High</span>}
+          {medium > 0 && <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs text-amber-700">{medium} Medium</span>}
+          {low > 0 && <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs text-emerald-700">{low} Low</span>}
+          {analyzing > 0 && <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs text-indigo-700">{analyzing} Analyzing</span>}
+          {errors > 0 && <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">{errors} Error</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          {pending > 0 && (
+            <button
+              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-indigo-600 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-indigo-700"
+              onClick={onRunPending}
+              type="button"
+            >
+              Analyze {pending} pending
+            </button>
+          )}
+          <button
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 px-3 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+            onClick={onClear}
+            type="button"
+          >
+            <TrashIcon className="h-3.5 w-3.5" />
+            Clear all
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table className="w-full border-collapse text-left text-sm">
+          <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="px-4 py-3">Filename</th>
+              <th className="px-4 py-3">Risk</th>
+              <th className="px-4 py-3">Findings</th>
+              <th className="hidden px-4 py-3 sm:table-cell">Size</th>
+              <th className="hidden px-4 py-3 sm:table-cell">Date gap</th>
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <BatchRow
+                exportStatus={exportStatuses[item.id] ?? ""}
+                item={item}
+                key={item.id}
+                onCopySummary={() => onBatchCopySummary(item.id)}
+                onDownloadJson={() => onBatchDownloadJson(item.id)}
+                onDownloadText={() => onBatchDownloadText(item.id)}
+                onRemove={() => onRemove(item.id)}
+                onToggleExpand={() => onToggleExpand(item.id)}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function BatchRow({
+  item,
+  onToggleExpand,
+  onRemove,
+  exportStatus,
+  onCopySummary,
+  onDownloadJson,
+  onDownloadText,
+}: {
+  item: BatchItem;
+  onToggleExpand: () => void;
+  onRemove: () => void;
+  exportStatus: string;
+  onCopySummary: () => void;
+  onDownloadJson: () => void;
+  onDownloadText: () => void;
+}) {
+  const badge = item.report ? getBatchRiskBadge(item.report.metadata_risk_level) : null;
+  const dateGap = item.report ? getDateGapLabel(item.report) : "—";
+  const fileSize = item.file.size < 1024 * 1024
+    ? `${(item.file.size / 1024).toFixed(0)} KB`
+    : `${(item.file.size / (1024 * 1024)).toFixed(1)} MB`;
+
+  return (
+    <>
+      <tr
+        className={`border-t border-slate-200 transition ${item.status === "done" ? "cursor-pointer hover:bg-indigo-50/30" : ""} ${item.expanded ? "bg-indigo-50/20" : ""}`}
+        onClick={item.status === "done" ? onToggleExpand : undefined}
+      >
+        <td className="max-w-[180px] px-4 py-3">
+          <p className="truncate font-medium text-slate-800">{item.file.name}</p>
+        </td>
+        <td className="px-4 py-3">
+          {item.status === "pending" && <span className="text-xs font-medium text-slate-400">Pending</span>}
+          {item.status === "analyzing" && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600">
+              <SpinnerIcon className="h-3.5 w-3.5 animate-spin" /> Analyzing
+            </span>
+          )}
+          {item.status === "done" && badge && (
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${badge.className}`}>{badge.label}</span>
+          )}
+          {item.status === "error" && (
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500" title={item.error}>Error</span>
+          )}
+        </td>
+        <td className="px-4 py-3 text-slate-600">
+          {item.report ? item.report.findings.length : "—"}
+        </td>
+        <td className="hidden px-4 py-3 text-slate-500 sm:table-cell">{fileSize}</td>
+        <td className="hidden px-4 py-3 text-slate-500 sm:table-cell">{dateGap}</td>
+        <td className="px-4 py-3 text-right">
+          <div className="flex items-center justify-end gap-1">
+            {item.status === "done" && (
+              <ChevronDownIcon className={`h-4 w-4 text-slate-400 transition-transform ${item.expanded ? "rotate-180" : ""}`} />
+            )}
+            <button
+              className="ml-1 rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              onClick={(e) => { e.stopPropagation(); onRemove(); }}
+              title="Remove"
+              type="button"
+            >
+              <TrashIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </td>
+      </tr>
+      {item.expanded && item.report && (
+        <tr className="border-t border-indigo-100 bg-indigo-50/10">
+          <td className="px-4 pb-6 pt-2" colSpan={6}>
+            <ReportView
+              exportStatus={exportStatus}
+              onCopySummary={onCopySummary}
+              onDownloadJson={onDownloadJson}
+              onDownloadText={onDownloadText}
+              report={item.report}
+            />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 export default function Home() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const compareInputRefs = [useRef<HTMLInputElement | null>(null), useRef<HTMLInputElement | null>(null)] as const;
@@ -402,6 +670,10 @@ export default function Home() {
   const [showOnlyDifferences, setShowOnlyDifferences] = useState(false);
   const [loadingSeconds, setLoadingSeconds] = useState(0);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const batchInputRef = useRef<HTMLInputElement | null>(null);
+  const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
+  const [batchIsDragging, setBatchIsDragging] = useState(false);
+  const [batchExportStatuses, setBatchExportStatuses] = useState<Record<string, string>>({});
   const isAnyAnalysisLoading = loading || compareLoading.some(Boolean);
 
   useEffect(() => {
@@ -643,6 +915,90 @@ export default function Home() {
     setCompareError("");
   };
 
+  const analyzeBatchItem = useCallback(async (id: string, file: File) => {
+    setBatchItems(prev => prev.map(item => item.id === id ? { ...item, status: "analyzing" as BatchStatus } : item));
+    try {
+      const result = await requestAnalysis(file, `batch-${id}`);
+      setBatchItems(prev => prev.map(item => item.id === id ? { ...item, status: "done" as BatchStatus, report: result } : item));
+    } catch (err) {
+      const message = err instanceof DOMException && err.name === "AbortError"
+        ? "Timed out"
+        : err instanceof Error ? err.message : "Failed";
+      setBatchItems(prev => prev.map(item => item.id === id ? { ...item, status: "error" as BatchStatus, error: message } : item));
+    }
+  }, [requestAnalysis]);
+
+  const addBatchFiles = useCallback((files: FileList) => {
+    const newItems: BatchItem[] = Array.from(files)
+      .filter(f => (f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")) && f.size > 0 && f.size <= MAX_UPLOAD_SIZE_BYTES)
+      .map(f => ({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        file: f,
+        status: "pending" as BatchStatus,
+        report: null,
+        error: "",
+        expanded: false,
+      }));
+    if (!newItems.length) return;
+    setBatchItems(prev => [...prev, ...newItems]);
+    const CONCURRENCY = 3;
+    const run = async () => {
+      for (let i = 0; i < newItems.length; i += CONCURRENCY) {
+        await Promise.all(newItems.slice(i, i + CONCURRENCY).map(item => analyzeBatchItem(item.id, item.file)));
+      }
+    };
+    void run();
+  }, [analyzeBatchItem]);
+
+  const runPendingBatch = useCallback(() => {
+    const pending = batchItems.filter(i => i.status === "pending");
+    if (!pending.length) return;
+    const CONCURRENCY = 3;
+    const run = async () => {
+      for (let i = 0; i < pending.length; i += CONCURRENCY) {
+        await Promise.all(pending.slice(i, i + CONCURRENCY).map(item => analyzeBatchItem(item.id, item.file)));
+      }
+    };
+    void run();
+  }, [batchItems, analyzeBatchItem]);
+
+  const toggleBatchExpanded = useCallback((id: string) => {
+    setBatchItems(prev => prev.map(item => item.id === id ? { ...item, expanded: !item.expanded } : item));
+  }, []);
+
+  const removeBatchItem = useCallback((id: string) => {
+    setBatchItems(prev => prev.filter(item => item.id !== id));
+  }, []);
+
+  const clearBatch = useCallback(() => {
+    setBatchItems([]);
+    setBatchExportStatuses({});
+  }, []);
+
+  const batchCopySummary = useCallback(async (id: string) => {
+    const item = batchItems.find(i => i.id === id);
+    if (!item?.report) return;
+    await navigator.clipboard.writeText(buildReportSummary(item.report));
+    setBatchExportStatuses(prev => ({ ...prev, [id]: "Summary copied to clipboard." }));
+  }, [batchItems]);
+
+  const batchDownloadJson = useCallback((id: string) => {
+    const item = batchItems.find(i => i.id === id);
+    if (!item?.report) return;
+    downloadBlob(JSON.stringify(item.report, null, 2), `${item.report.document_name}-metadata-report.json`, "application/json");
+    setBatchExportStatuses(prev => ({ ...prev, [id]: "JSON report downloaded." }));
+  }, [batchItems]);
+
+  const batchDownloadText = useCallback((id: string) => {
+    const item = batchItems.find(i => i.id === id);
+    if (!item?.report) return;
+    const findingsText = item.report.findings.length
+      ? item.report.findings.map(f => `- [${f.severity}] ${f.title}: ${f.explanation}`).join("\n")
+      : "- No suspicious metadata indicators were detected.";
+    downloadBlob(`${buildReportSummary(item.report)}\n\nFindings:\n${findingsText}\n`, `${item.report.document_name}-metadata-report.txt`, "text/plain");
+    setBatchExportStatuses(prev => ({ ...prev, [id]: "Text report downloaded." }));
+  }, [batchItems]);
+
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-950">
       <header className="border-b border-slate-200 bg-white">
@@ -672,6 +1028,10 @@ export default function Home() {
             <TabButton active={mode === "compare"} onClick={() => switchMode("compare")}>
               <CompareIcon className="h-4 w-4" />
               Compare
+            </TabButton>
+            <TabButton active={mode === "batch"} onClick={() => switchMode("batch")}>
+              <LayersIcon className="h-4 w-4" />
+              Batch
             </TabButton>
           </div>
         </div>
@@ -744,7 +1104,7 @@ export default function Home() {
 
             {report && <ReportView exportStatus={exportStatus} onCopySummary={copySummary} onDownloadJson={downloadJson} onDownloadText={downloadText} report={report} />}
           </>
-        ) : (
+        ) : mode === "compare" ? (
           <>
             <div className="grid gap-5 lg:grid-cols-2">
               {[0, 1].map((index) => {
@@ -867,7 +1227,45 @@ export default function Home() {
               </section>
             )}
           </>
-        )}
+        ) : mode === "batch" ? (
+          <>
+            <input
+              ref={batchInputRef}
+              accept="application/pdf"
+              className="sr-only"
+              multiple
+              onChange={(e) => { if (e.target.files?.length) addBatchFiles(e.target.files); }}
+              type="file"
+            />
+            <BatchDropzone
+              inputRef={batchInputRef}
+              isDragging={batchIsDragging}
+              onBrowse={() => batchInputRef.current?.click()}
+              onDragLeave={() => setBatchIsDragging(false)}
+              onDragOver={(e) => { e.preventDefault(); setBatchIsDragging(true); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setBatchIsDragging(false);
+                if (e.dataTransfer.files?.length) addBatchFiles(e.dataTransfer.files);
+              }}
+              onInputChange={(e) => { if (e.target.files?.length) addBatchFiles(e.target.files); }}
+              pending={batchItems.filter(i => i.status === "pending").length}
+            />
+            {batchItems.length > 0 && (
+              <BatchTable
+                exportStatuses={batchExportStatuses}
+                items={batchItems}
+                onBatchCopySummary={batchCopySummary}
+                onBatchDownloadJson={batchDownloadJson}
+                onBatchDownloadText={batchDownloadText}
+                onClear={clearBatch}
+                onRemove={removeBatchItem}
+                onRunPending={runPendingBatch}
+                onToggleExpand={toggleBatchExpanded}
+              />
+            )}
+          </>
+        ) : null}
 
       </main>
 
