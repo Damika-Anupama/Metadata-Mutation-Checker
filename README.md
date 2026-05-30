@@ -2,11 +2,7 @@
 
 Frontend-only Next.js demo for checking PDF metadata consistency and potential mutation signals.
 
-Live demo:
-
-```text
-https://metadata-mutation-checker-chi.vercel.app/
-```
+**Live demo:** [metadata-mutation-checker-chi.vercel.app](https://metadata-mutation-checker-chi.vercel.app/)
 
 ## Demo
 
@@ -16,13 +12,10 @@ This short demo shows the PDF upload flow, metadata extraction, mutation signal 
 
 ## Branches
 
-`main` is intentionally kept as the Vercel-ready frontend-only demo branch. The app, API route, and shared metadata-analysis logic live at the repository root so Vercel can deploy from the project root without extra root-directory settings.
-
-For the older full-stack structure with separate `frontend/` and `backend/` folders, refer to:
-
-```text
-legacy-fullstack-main
-```
+| Branch | Description |
+|---|---|
+| `frontend-demo` _(this branch)_ | Self-contained Next.js demo — deployed on Vercel, no backend required |
+| `main` | Full-stack source — Python FastAPI backend + Next.js frontend + Docker Compose |
 
 ## Local Development
 
@@ -31,45 +24,26 @@ npm install
 npm run dev
 ```
 
-Open:
+Open `http://localhost:3000`.
+
+The PDF analysis runs in the same Next.js deployment via the `/api/analyze` route — no separate backend needed.
+
+## Deploy on Vercel
+
+Use the repository root as the Vercel root directory. Set **Production Branch** to `frontend-demo`.
 
 ```text
-http://localhost:3000
+Branch:           frontend-demo
+Root Directory:   (leave blank — project root)
+Framework:        Next.js
 ```
 
 ## API
-
-The PDF analysis runs in the same Next.js deployment:
 
 ```text
 POST /api/analyze
 ```
 
-Upload field:
+Upload field: `file` (PDF, max 8 MB)
 
-```text
-file
-```
-
-Optional environment variable:
-
-```text
-MAX_UPLOAD_SIZE_MB=8
-```
-
-## Deploy on Vercel
-
-Use the repository root as the Vercel root directory.
-
-Recommended settings:
-
-```text
-Branch: main
-Root Directory: leave blank / project root
-Framework: Next.js
-Install Command: npm install
-Build Command: npm run build
-Output Directory: leave blank / default
-```
-
-Output is handled by Next.js automatically.
+Optional env variable: `MAX_UPLOAD_SIZE_MB=8`
