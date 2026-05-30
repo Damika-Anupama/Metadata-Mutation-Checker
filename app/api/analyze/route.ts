@@ -82,6 +82,11 @@ function countPages(pdfText: string): number {
   return matches?.length ?? 0;
 }
 
+function countIncrementalUpdates(pdfText: string): number {
+  const matches = pdfText.match(/%%EOF/g);
+  return matches ? Math.max(0, matches.length - 1) : 0;
+}
+
 function extractPdfMetadata(bytes: Uint8Array, file: File): MetadataResult {
   const pdfText = decodePdfBytes(bytes);
   const rawMetadata = Object.fromEntries(
@@ -104,6 +109,7 @@ function extractPdfMetadata(bytes: Uint8Array, file: File): MetadataResult {
     subject: rawMetadata.Subject,
     page_count: countPages(pdfText),
     is_encrypted: /\/Encrypt\b/.test(pdfText),
+    incremental_updates: countIncrementalUpdates(pdfText),
   };
 }
 

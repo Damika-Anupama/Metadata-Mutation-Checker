@@ -33,6 +33,7 @@ const DEMO_REPORT: Report = {
     subject: null,
     page_count: 8,
     is_encrypted: false,
+    incremental_updates: 1,
   },
   findings: [
     {

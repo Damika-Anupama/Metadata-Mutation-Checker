@@ -22,6 +22,7 @@ export type MetadataResult = {
   subject: string | null;
   page_count: number;
   is_encrypted: boolean;
+  incremental_updates: number;
 };
 
 const suspiciousTools = [
@@ -71,6 +72,35 @@ function safeParseDate(value: string | null): Date | null {
   if (!value) return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function extractTimezoneOffset(rawDate: string | null): string | null {
+  if (!rawDate) return null;
+  const clean = rawDate.replace(/^D:/, "").slice(14);
+  const match = clean.match(/^([+-]\d{2}'\d{2}'|Z)/);
+  return match?.[1] ?? null;
+}
+
+function getProducerReleaseYear(text: string): number | null {
+  // Adobe PDF Library 23.x → 2023, 21.x → 2021, etc.
+  const adobeLib = text.match(/adobe\s+pdf\s+library\s+(\d{2})\./i);
+  if (adobeLib) {
+    const major = parseInt(adobeLib[1]);
+    if (major >= 10 && major <= 40) return 2000 + major;
+  }
+  // Adobe Acrobat 2020, Adobe Acrobat DC 2023, etc.
+  const acrobat = text.match(/adobe\s+acrobat[^\d]*(\d{4})/i);
+  if (acrobat) {
+    const year = parseInt(acrobat[1]);
+    if (year >= 2000 && year <= 2035) return year;
+  }
+  // Microsoft Word 2019, Microsoft Office Word 2016, etc.
+  const word = text.match(/microsoft[^\d]*(\d{4})/i);
+  if (word) {
+    const year = parseInt(word[1]);
+    if (year >= 2000 && year <= 2035) return year;
+  }
+  return null;
 }
 
 function addFinding(
@@ -233,6 +263,50 @@ export function runMetadataChecks(metadata: MetadataResult): Finding[] {
       0.9,
       "The PDF appears to contain no pages, which is abnormal for a document file.",
       "structure"
+    );
+  }
+
+  // Rule: incremental updates
+  if (metadata.incremental_updates > 0) {
+    const count = metadata.incremental_updates;
+    addFinding(
+      findings,
+      `PDF contains ${count} incremental update${count > 1 ? "s" : ""}`,
+      count >= 3 ? "High" : "Medium",
+      count >= 3 ? 0.85 : 0.72,
+      `The PDF structure contains ${count} incremental update section${count > 1 ? "s" : ""} appended after the original content. Incremental updates are how PDF editors append changes without rewriting the whole file — a common technique when modifying a signed or certified document.`,
+      "structure"
+    );
+  }
+
+  // Rule: timezone shift between creation and modification
+  const createdTz = extractTimezoneOffset(metadata.raw_created_date);
+  const modifiedTz = extractTimezoneOffset(metadata.raw_modified_date);
+  if (createdTz && modifiedTz && createdTz !== modifiedTz) {
+    addFinding(
+      findings,
+      "Timezone shift between creation and modification dates",
+      "Low",
+      0.62,
+      `The document was created with timezone offset ${createdTz} but last modified with ${modifiedTz}. Different timezones between creation and modification can indicate the document was edited on a system in a different region or country.`,
+      "date"
+    );
+  }
+
+  // Rule: producer/creator tool released after stated creation date
+  const toolYear = Math.max(
+    getProducerReleaseYear(producer) ?? 0,
+    getProducerReleaseYear(creator) ?? 0
+  ) || null;
+  if (toolYear && createdDate && toolYear > createdDate.getFullYear()) {
+    const toolName = getProducerReleaseYear(producer) ? `producer (${producer})` : `creator (${creator})`;
+    addFinding(
+      findings,
+      "Authoring tool post-dates stated document creation",
+      "High",
+      0.9,
+      `The document claims to have been created in ${createdDate.getFullYear()}, but the ${toolName} was not released until ${toolYear}. This is an impossible timeline and strongly indicates the document was re-exported or backdated.`,
+      "software"
     );
   }
 
