@@ -9,6 +9,63 @@ const REQUEST_TIMEOUT_MS = 30000;
 const MAX_UPLOAD_SIZE_MB = 8;
 const MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024;
 const LOG_PREFIX = "[PDF Auto Analyze]";
+
+const DEMO_REPORT: Report = {
+  document_name: "service_agreement_2022.pdf",
+  file_type: "PDF",
+  metadata_risk_score: 68,
+  metadata_risk_level: "High",
+  summary:
+    "This document exhibits multiple metadata inconsistencies that warrant further investigation. The creation tool chain is inconsistent, the modification date is significantly later than the creation date, and the author field has been cleared — patterns commonly associated with retroactive document editing.",
+  extracted_metadata: {
+    file_name: "service_agreement_2022.pdf",
+    file_size_bytes: 184320,
+    file_type: "PDF",
+    pdf_version: "1.6",
+    created_date: "2022-04-14",
+    modified_date: "2024-09-27",
+    raw_created_date: "D:20220414112034+05'30'",
+    raw_modified_date: "D:20240927183201Z",
+    author: null,
+    creator: "Microsoft Word 2016",
+    producer: "Adobe PDF Library 23.6",
+    title: "Service Agreement",
+    subject: null,
+    page_count: 8,
+    is_encrypted: false,
+  },
+  findings: [
+    {
+      title: "Creator/Producer Version Mismatch",
+      severity: "High",
+      confidence: 0.92,
+      category: "Authoring Tools",
+      explanation:
+        "The document was created using Microsoft Word 2016, but the PDF producer is Adobe PDF Library 23.6 (released in 2023). This means the document was re-exported through a newer tool years after its stated creation date — a strong indicator of post-creation modification.",
+    },
+    {
+      title: "Modification Date 29 Months After Creation",
+      severity: "Medium",
+      confidence: 0.78,
+      category: "Temporal Anomaly",
+      explanation:
+        "The creation date is April 2022 but the last modification timestamp is September 2024 — a gap of 29 months. The modification also occurred in a different timezone (UTC) than the original creation (+05:30), suggesting the document was edited on a different system or location.",
+    },
+    {
+      title: "Author Field Cleared",
+      severity: "Medium",
+      confidence: 0.71,
+      category: "Missing Fields",
+      explanation:
+        "The Author metadata field is empty. Microsoft Word typically populates this automatically from the system user account. A blank Author field in a Word-generated PDF usually indicates the field was deliberately cleared before re-exporting.",
+    },
+  ],
+  recommended_action:
+    "Request the original source file (e.g., .docx) from the issuing party and verify that creation and modification timestamps are consistent with the stated signing date.",
+  disclaimer:
+    "This tool identifies statistical and structural anomalies in PDF metadata. Results are indicative only and do not confirm document forgery or authenticity. Consult a qualified document examiner for legal or compliance matters.",
+};
+
 const compareKeys = [
   "file_size_bytes",
   "pdf_version",
@@ -344,6 +401,7 @@ export default function Home() {
   const [compareError, setCompareError] = useState("");
   const [showOnlyDifferences, setShowOnlyDifferences] = useState(false);
   const [loadingSeconds, setLoadingSeconds] = useState(0);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const isAnyAnalysisLoading = loading || compareLoading.some(Boolean);
 
   useEffect(() => {
@@ -421,6 +479,7 @@ export default function Home() {
       setLoading(true);
       setError("");
       setReport(null);
+      setIsDemoMode(false);
 
       try {
         setReport(await requestAnalysis(selectedFile, "analyze"));
@@ -459,6 +518,15 @@ export default function Home() {
     },
     [analyzeFile]
   );
+
+  const loadDemo = useCallback(() => {
+    setMode("analyze");
+    setFile(null);
+    setReport(DEMO_REPORT);
+    setError("");
+    setExportStatus("");
+    setIsDemoMode(true);
+  }, []);
 
   const selectCompareFile = useCallback(
     async (slot: CompareSlot, selectedFile: File | null, source: "input" | "drop") => {
@@ -586,6 +654,13 @@ export default function Home() {
                 Document Metadata Mutation Checker
               </h1>
               <p className="mt-0.5 text-xs text-slate-500">Analyze metadata consistency & compare documents</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {["Next.js", "TypeScript", "Tailwind CSS", "Node.js"].map((tag) => (
+                  <span key={tag} className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                    {tag}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -639,6 +714,33 @@ export default function Home() {
               />
             </form>
 
+
+            {!report && !loading && (
+              <p className="mt-4 text-center text-sm text-slate-500">
+                Don&apos;t have a PDF handy?{" "}
+                <button
+                  className="font-medium text-indigo-600 underline underline-offset-2 hover:text-indigo-700"
+                  onClick={loadDemo}
+                  type="button"
+                >
+                  Try with a sample document
+                </button>
+              </p>
+            )}
+
+            {isDemoMode && report && (
+              <div className="mt-5 flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+                <span className="font-semibold">Demo mode</span>
+                <span className="text-amber-700">Showing pre-loaded sample analysis. Upload your own PDF to analyze a real document.</span>
+                <button
+                  className="ml-auto text-xs font-medium text-amber-700 underline underline-offset-2 hover:text-amber-900"
+                  onClick={() => { setReport(null); setIsDemoMode(false); }}
+                  type="button"
+                >
+                  Clear demo
+                </button>
+              </div>
+            )}
 
             {report && <ReportView exportStatus={exportStatus} onCopySummary={copySummary} onDownloadJson={downloadJson} onDownloadText={downloadText} report={report} />}
           </>
@@ -774,9 +876,6 @@ export default function Home() {
           <div className="flex flex-wrap gap-3">
             <a className="font-medium text-slate-700 transition hover:text-indigo-600" href="https://github.com/Damika-Anupama/Metadata-Mutation-Checker" rel="noreferrer" target="_blank">
               GitHub repo
-            </a>
-            <a className="font-medium text-slate-700 transition hover:text-indigo-600" href="https://metadata-mutation-checker-chi.vercel.app/" rel="noreferrer" target="_blank">
-              Live demo
             </a>
             <a className="font-medium text-slate-700 transition hover:text-indigo-600" href="https://github.com/Damika-Anupama" rel="noreferrer" target="_blank">
               Developer profile
