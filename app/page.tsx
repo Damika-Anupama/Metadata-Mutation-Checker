@@ -615,6 +615,7 @@ function UploadDropzone({
   selectedName,
   title,
   help,
+  browseLabel = "Browse Files",
   validationMessage,
   onBrowse,
   onDragLeave,
@@ -629,6 +630,7 @@ function UploadDropzone({
   selectedName?: string;
   title: string;
   help: string;
+  browseLabel?: string;
   validationMessage?: string;
   onBrowse: () => void;
   onDragLeave: () => void;
@@ -673,7 +675,7 @@ function UploadDropzone({
           type="button"
         >
           <FileIcon className="h-4 w-4" />
-          {loading ? "Analyzing..." : "Browse Files"}
+          {loading ? "Analyzing..." : browseLabel}
         </button>
         {selectedName && (
           <p className="mt-4 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
@@ -1362,6 +1364,7 @@ export default function Home() {
                 }}
                 onInputChange={(event) => selectFile(event.target.files?.[0] ?? null, "input")}
                 selectedName={file?.name}
+                browseLabel="Browse File"
                 title="Drag & drop your file here"
                 validationMessage={error}
               />
