@@ -2,7 +2,7 @@
 
 import type { ChangeEvent, DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { BatchItem, BatchStatus, CompareRow, CompareSlot, IconProps, Mode, Report } from "@/lib/types";
+import type { BatchItem, BatchStatus, CompareRow, CompareSlot, HistoryEntry, IconProps, Mode, Report } from "@/lib/types";
 
 const ANALYZE_ENDPOINT = "/api/analyze";
 const REQUEST_TIMEOUT_MS = 30000;
@@ -214,6 +214,167 @@ function DownloadIcon({ className }: IconProps) {
     <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
       <path d="M12 4.75v10.5m0 0-4-4m4 4 4-4M5 19.25h14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
     </svg>
+  );
+}
+
+function HistoryIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M12 8v4l2.5 2.5M3.05 11a9 9 0 1 0 .49-3M3 5v6h6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+const HISTORY_KEY = "mmc-history";
+const HISTORY_MAX = 50;
+
+function formatRelativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return new Date(ts).toLocaleDateString();
+}
+
+function useHistory() {
+  const [entries, setEntries] = useState<HistoryEntry[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (raw) setEntries(JSON.parse(raw) as HistoryEntry[]);
+    } catch {}
+  }, []);
+
+  const save = useCallback((report: Report) => {
+    setEntries(prev => {
+      const entry: HistoryEntry = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        savedAt: Date.now(),
+        report,
+      };
+      const next = [entry, ...prev].slice(0, HISTORY_MAX);
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const remove = useCallback((id: string) => {
+    setEntries(prev => {
+      const next = prev.filter(e => e.id !== id);
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const clear = useCallback(() => {
+    setEntries([]);
+    try { localStorage.removeItem(HISTORY_KEY); } catch {}
+  }, []);
+
+  return { entries, save, remove, clear };
+}
+
+function HistoryPanel({
+  entries,
+  onOpen,
+  onRemove,
+  onClear,
+}: {
+  entries: HistoryEntry[];
+  onOpen: (entry: HistoryEntry) => void;
+  onRemove: (id: string) => void;
+  onClear: () => void;
+}) {
+  if (entries.length === 0) {
+    return (
+      <div className="mt-12 flex flex-col items-center gap-3 text-center">
+        <HistoryIcon className="h-12 w-12 text-slate-300" />
+        <p className="font-medium text-slate-500">No history yet</p>
+        <p className="max-w-xs text-sm text-slate-400">
+          Every document you analyze is saved here automatically. Upload a PDF in the Analyze or Batch tab to get started.
+        </p>
+      </div>
+    );
+  }
+
+  const high = entries.filter(e => e.report.metadata_risk_level === "High").length;
+  const medium = entries.filter(e => e.report.metadata_risk_level === "Medium").length;
+  const low = entries.filter(e => e.report.metadata_risk_level === "Low").length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-5 py-3.5 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3 text-sm font-medium">
+          <span className="text-slate-700">{entries.length} document{entries.length !== 1 ? "s" : ""}</span>
+          {high > 0 && <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs text-red-700">{high} High</span>}
+          {medium > 0 && <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs text-amber-700">{medium} Medium</span>}
+          {low > 0 && <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs text-emerald-700">{low} Low</span>}
+        </div>
+        <button
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 px-3 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+          onClick={onClear}
+          type="button"
+        >
+          <TrashIcon className="h-3.5 w-3.5" />
+          Clear all
+        </button>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table className="w-full border-collapse text-left text-sm">
+          <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="px-4 py-3">Document</th>
+              <th className="px-4 py-3">Risk</th>
+              <th className="hidden px-4 py-3 sm:table-cell">Findings</th>
+              <th className="hidden px-4 py-3 sm:table-cell">Analyzed</th>
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map(entry => {
+              const badge = getBatchRiskBadge(entry.report.metadata_risk_level);
+              return (
+                <tr className="border-t border-slate-200 transition hover:bg-indigo-50/20" key={entry.id}>
+                  <td className="max-w-[200px] px-4 py-3">
+                    <p className="truncate font-medium text-slate-800">{entry.report.document_name}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${badge.className}`}>{badge.label}</span>
+                  </td>
+                  <td className="hidden px-4 py-3 text-slate-500 sm:table-cell">{entry.report.findings.length}</td>
+                  <td className="hidden px-4 py-3 text-slate-500 sm:table-cell">{formatRelativeTime(entry.savedAt)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700"
+                        onClick={() => onOpen(entry)}
+                        type="button"
+                      >
+                        Open
+                      </button>
+                      <button
+                        className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                        onClick={() => onRemove(entry.id)}
+                        title="Remove"
+                        type="button"
+                      >
+                        <TrashIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
@@ -653,6 +814,7 @@ function BatchRow({
 }
 
 export default function Home() {
+  const history = useHistory();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const compareInputRefs = [useRef<HTMLInputElement | null>(null), useRef<HTMLInputElement | null>(null)] as const;
   const [mode, setMode] = useState<Mode>("analyze");
@@ -754,7 +916,9 @@ export default function Home() {
       setIsDemoMode(false);
 
       try {
-        setReport(await requestAnalysis(selectedFile, "analyze"));
+        const result = await requestAnalysis(selectedFile, "analyze");
+        setReport(result);
+        history.save(result);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           setError(`The API did not respond within ${REQUEST_TIMEOUT_MS / 1000} seconds. Try a smaller PDF.`);
@@ -920,13 +1084,14 @@ export default function Home() {
     try {
       const result = await requestAnalysis(file, `batch-${id}`);
       setBatchItems(prev => prev.map(item => item.id === id ? { ...item, status: "done" as BatchStatus, report: result } : item));
+      history.save(result);
     } catch (err) {
       const message = err instanceof DOMException && err.name === "AbortError"
         ? "Timed out"
         : err instanceof Error ? err.message : "Failed";
       setBatchItems(prev => prev.map(item => item.id === id ? { ...item, status: "error" as BatchStatus, error: message } : item));
     }
-  }, [requestAnalysis]);
+  }, [requestAnalysis, history.save]);
 
   const addBatchFiles = useCallback((files: FileList) => {
     const newItems: BatchItem[] = Array.from(files)
@@ -1032,6 +1197,15 @@ export default function Home() {
             <TabButton active={mode === "batch"} onClick={() => switchMode("batch")}>
               <LayersIcon className="h-4 w-4" />
               Batch
+            </TabButton>
+            <TabButton active={mode === "history"} onClick={() => switchMode("history")}>
+              <HistoryIcon className="h-4 w-4" />
+              History
+              {history.entries.length > 0 && (
+                <span className="ml-0.5 rounded-full bg-indigo-100 px-1.5 py-0.5 text-xs font-semibold text-indigo-700">
+                  {history.entries.length}
+                </span>
+              )}
             </TabButton>
           </div>
         </div>
@@ -1265,6 +1439,20 @@ export default function Home() {
               />
             )}
           </>
+        ) : mode === "history" ? (
+          <HistoryPanel
+            entries={history.entries}
+            onClear={history.clear}
+            onOpen={(entry) => {
+              setReport(entry.report);
+              setFile(null);
+              setIsDemoMode(false);
+              setError("");
+              setExportStatus("");
+              switchMode("analyze");
+            }}
+            onRemove={history.remove}
+          />
         ) : null}
 
       </main>

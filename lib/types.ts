@@ -19,7 +19,7 @@ export type Report = {
 };
 
 export type IconProps = { className?: string };
-export type Mode = "analyze" | "compare" | "batch";
+export type Mode = "analyze" | "compare" | "batch" | "history";
 export type CompareSlot = 0 | 1;
 
 export type CompareRow = {
@@ -38,4 +38,10 @@ export type BatchItem = {
   report: Report | null;
   error: string;
   expanded: boolean;
+};
+
+export type HistoryEntry = {
+  id: string;
+  savedAt: number;
+  report: Report;
 };
