@@ -10,6 +10,18 @@ Frontend-only Next.js demo for checking PDF metadata consistency and potential m
 
 This short demo shows the PDF upload flow, metadata extraction, mutation signal checks, risk summary, and generated findings.
 
+## Who is this for?
+
+Anyone whose workflow involves accepting PDFs from external parties where authenticity matters:
+
+- **Legal & compliance** — verify contracts, agreements, and submitted documents haven't been backdated or re-exported
+- **HR & recruitment** — spot-check academic certificates and employment letters before interviews
+- **Finance & insurance** — flag invoices, receipts, or claim documents potentially modified after submission
+- **Journalism & research** — verify provenance of leaked or archival PDFs before publishing
+- **Procurement** — check that tender submissions weren't altered after the deadline
+
+The tool gives a fast first-pass signal in seconds — not a replacement for forensic experts, but a practical filter before deciding whether to escalate.
+
 ## Branches
 
 | Branch | Description |
