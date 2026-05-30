@@ -157,6 +157,125 @@ function TrashIcon({ className }: IconProps) {
   );
 }
 
+function DateTimeline({ metadata }: { metadata: Record<string, unknown> }) {
+  const createdStr = metadata.created_date as string | null;
+  const modifiedStr = metadata.modified_date as string | null;
+  if (!createdStr && !modifiedStr) return null;
+
+  const createdMs = createdStr ? new Date(createdStr).getTime() : null;
+  const modifiedMs = modifiedStr ? new Date(modifiedStr).getTime() : null;
+  const todayMs = Date.now();
+
+  const earliest = Math.min(createdMs ?? todayMs, modifiedMs ?? todayMs);
+  const totalSpan = Math.max(todayMs - earliest, 1);
+
+  const L = 40;
+  const R = 460;
+  const W = R - L;
+  const Y = 38;
+
+  const clamp = (x: number) => Math.max(L, Math.min(R, x));
+  const posX = (ms: number) => clamp(L + ((ms - earliest) / totalSpan) * W);
+
+  const cX = createdMs !== null ? posX(createdMs) : null;
+  const mX = modifiedMs !== null ? posX(modifiedMs) : null;
+  const tX = posX(todayMs);
+
+  const isFlipped = createdMs !== null && modifiedMs !== null && modifiedMs < createdMs;
+  const gapMs = createdMs !== null && modifiedMs !== null ? Math.abs(modifiedMs - createdMs) : null;
+  const gapDays = gapMs !== null ? Math.floor(gapMs / 86400000) : null;
+
+  const gapColor = gapDays === null ? "#6366f1"
+    : gapDays === 0 ? "#059669"
+    : gapDays > 365 ? "#dc2626"
+    : gapDays > 30 ? "#d97706"
+    : "#059669";
+
+  const gapLabel = gapDays === null ? null
+    : gapDays === 0 ? "same day"
+    : gapDays < 30 ? `${gapDays}d gap`
+    : gapDays < 365 ? `${Math.floor(gapDays / 30)}mo gap`
+    : `${(gapDays / 365).toFixed(1)}yr gap`;
+
+  const fmt = (ms: number) => new Date(ms).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  const anchorFor = (x: number) => x < L + W * 0.12 ? "start" : x > R - W * 0.12 ? "end" : "middle";
+
+  return (
+    <div className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Document timeline</p>
+      {isFlipped && (
+        <p className="mb-2 rounded-md bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700">
+          Modified date is earlier than creation date — strong anomaly
+        </p>
+      )}
+      <svg aria-hidden="true" className="w-full" viewBox="0 0 500 85">
+        {/* base track */}
+        <line x1={L} y1={Y} x2={R} y2={Y} stroke="#e2e8f0" strokeLinecap="round" strokeWidth={4} />
+
+        {/* created → modified colored segment */}
+        {cX !== null && mX !== null && (
+          <line
+            stroke={gapColor}
+            strokeLinecap="round"
+            strokeWidth={4}
+            x1={Math.min(cX, mX)}
+            x2={Math.max(cX, mX)}
+            y1={Y}
+            y2={Y}
+          />
+        )}
+
+        {/* gap label above midpoint */}
+        {cX !== null && mX !== null && gapLabel && Math.abs(mX - cX) > 24 && (
+          <text
+            dominantBaseline="auto"
+            fill={gapColor}
+            fontSize={10}
+            fontWeight="700"
+            textAnchor="middle"
+            x={(cX + mX) / 2}
+            y={Y - 12}
+          >
+            {gapLabel}
+          </text>
+        )}
+
+        {/* created dot */}
+        {cX !== null && createdMs !== null && (
+          <>
+            <circle cx={cX} cy={Y} fill="white" r={6} stroke={gapColor} strokeWidth={2.5} />
+            <text dominantBaseline="hanging" fill="#64748b" fontSize={10} fontWeight="600" textAnchor={anchorFor(cX)} x={cX} y={Y + 12}>
+              Created
+            </text>
+            <text dominantBaseline="hanging" fill="#94a3b8" fontSize={10} textAnchor={anchorFor(cX)} x={cX} y={Y + 24}>
+              {fmt(createdMs)}
+            </text>
+          </>
+        )}
+
+        {/* modified dot */}
+        {mX !== null && modifiedMs !== null && (
+          <>
+            <circle cx={mX} cy={Y} fill="white" r={6} stroke={isFlipped ? "#dc2626" : gapColor} strokeWidth={2.5} />
+            <text dominantBaseline="hanging" fill="#64748b" fontSize={10} fontWeight="600" textAnchor={anchorFor(mX)} x={mX} y={Y + 12}>
+              Modified
+            </text>
+            <text dominantBaseline="hanging" fill="#94a3b8" fontSize={10} textAnchor={anchorFor(mX)} x={mX} y={Y + 24}>
+              {fmt(modifiedMs)}
+            </text>
+          </>
+        )}
+
+        {/* today dot */}
+        <circle cx={tX} cy={Y} fill="#94a3b8" r={4} />
+        <text dominantBaseline="hanging" fill="#94a3b8" fontSize={10} textAnchor={anchorFor(tX)} x={tX} y={Y + 12}>
+          Today
+        </text>
+      </svg>
+    </div>
+  );
+}
+
 function getDateGapLabel(report: Report): string {
   const created = report.extracted_metadata.created_date as string | null;
   const modified = report.extracted_metadata.modified_date as string | null;
@@ -1526,6 +1645,8 @@ function ReportView({
           <DashboardMetric label="Pages" value={formatValue(report.extracted_metadata.page_count)} />
           <DashboardMetric label="Encrypted" tone={report.extracted_metadata.is_encrypted ? "amber" : "emerald"} value={report.extracted_metadata.is_encrypted ? "Yes" : "No"} />
         </div>
+
+        <DateTimeline metadata={report.extracted_metadata} />
 
         <div className="mt-6 rounded-lg border border-indigo-100 bg-indigo-50 p-5">
           <h3 className="font-semibold text-indigo-950">Recommended action</h3>
