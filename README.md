@@ -1,114 +1,89 @@
-# Document Metadata Mutation Checker
+# Metadata Mutation Checker
 
-Full-stack application for analyzing PDF document metadata and detecting potential mutation signals. Uploads a PDF, extracts metadata, runs rule-based checks, and returns a scored risk report with detailed findings.
+> Full-stack PDF metadata forensics tool that flags backdating and tampering **signals** for manual review — it does **not** confirm document tampering.
 
-**Live demo:** [metadata-mutation-checker-chi.vercel.app](https://metadata-mutation-checker-chi.vercel.app/)
+**🔗 Live demo:** [metadata-mutation-checker-chi.vercel.app](https://metadata-mutation-checker-chi.vercel.app/)
 
-## Demo
+> ⚠️ **Disclaimer:** This tool extracts PDF metadata and applies rule-based heuristics to surface *potential* indicators of manipulation. A flagged document is **not** proof of tampering — results are signals intended for human review.
 
-![Metadata Mutation Checker demo](assets/metadata-mutation-checker-demo.gif)
+---
 
-## Tech Stack
+## Branch convention
+
+| Branch | Purpose |
+|---|---|
+| `main` | Full-stack source — **Next.js frontend + FastAPI backend** (Docker-composed) |
+| `frontend-demo` | Frontend-only build deployed to Vercel (the live demo above) |
+
+---
+
+## Overview
+
+Upload a PDF and the tool parses its raw metadata, runs a series of rule-based checks, and produces a weighted **risk score (0–100)** alongside a breakdown of which signals fired. It is built as two services: a Python/FastAPI API that does the parsing and scoring, and a Next.js UI that handles upload, visualisation, and reporting.
+
+## Key features
+
+- **Raw metadata extraction** from PDF documents (via `pypdf`)
+- **Rule-based mutation checks** — date anomalies, impossible tool/version vs. year combinations, timezone shifts, incremental update markers, and encryption/structure flags
+- **Weighted risk scoring** (0–100) with a per-signal breakdown
+- **Clean upload UX** with drag-and-drop and instant analysis
+- **Dockerised** — single `docker compose up` brings the full stack online
+
+## Tech stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS |
-| Backend | Python 3.11, FastAPI, pypdf |
-| Infrastructure | Docker, Docker Compose |
+| Frontend | Next.js 16, React 19, TypeScript 5, Tailwind CSS 4 |
+| Backend | Python, FastAPI, Uvicorn, pypdf, Pydantic |
+| Tooling / Deploy | Docker, docker-compose, Vercel (frontend demo), ESLint 9 |
 
-## Features
-
-- PDF upload with drag & drop
-- Metadata extraction (author, creator, producer, dates, encryption, page count, etc.)
-- Rule-based mutation signal checks across 4 categories: dates, software, missing fields, structure
-- Risk score (0–100) with Low / Medium / High classification
-- Findings panel with severity, confidence, and explanations
-- Side-by-side document comparison mode
-- Export report as JSON or TXT
-- Searchable metadata table
-
-## Project Structure
+## Project structure
 
 ```
 .
-├── backend/          # Python FastAPI — metadata extraction & risk scoring
-│   ├── app/
-│   │   ├── main.py
-│   │   ├── metadata_extractor.py
-│   │   ├── mutation_checker.py
-│   │   └── risk_scoring.py
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/         # Next.js — upload UI, report view, compare mode
-│   ├── app/
-│   ├── lib/
-│   ├── Dockerfile
-│   └── .env.example
-├── docker-compose.yml
-└── assets/
+├── frontend/                 # Next.js app (upload UI, results, scoring view)
+│   └── src/
+├── backend/                  # FastAPI service
+│   └── app/
+│       ├── main.py           # API entrypoint / routes
+│       ├── metadata_extractor.py
+│       ├── mutation_checker.py
+│       ├── risk_scoring.py
+│       └── schemas.py
+├── docker-compose.yml        # frontend + backend orchestration
+└── vercel.json
 ```
 
-## Branches
+## Local development
 
-| Branch | Description |
-|---|---|
-| `main` | Full-stack source — Python backend + Next.js frontend + Docker |
-| `frontend-demo` | Self-contained Next.js demo deployed on Vercel (no Python required) |
-
-## Run with Docker
+### Full stack (Docker)
 
 ```bash
 docker compose up --build
+# frontend → http://localhost:3000
+# backend  → http://localhost:8000
 ```
 
-Frontend: http://localhost:3000  
-Backend API: http://localhost:8000
+### Run services individually
 
-## Local Development
-
-### Backend
-
+**Backend**
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --port 8000
 ```
 
-Backend runs at `http://localhost:8000`.
-
-### Frontend
-
+**Frontend**
 ```bash
 cd frontend
-cp .env.example .env.local      # sets BACKEND_URL=http://localhost:8000
 npm install
-npm run dev
+npm run dev          # http://localhost:3000
 ```
 
-Frontend runs at `http://localhost:3000`.
+## Screenshots
 
-## Risk Scoring Logic
+> _Add screenshots / demo GIF here (see `assets/`)._
 
-Each finding contributes to the final score based on severity and confidence.
+## Author
 
-| Severity | Weight |
-|---|---|
-| Low | 10 |
-| Medium | 25 |
-| High | 45 |
-
-Multiple findings across different categories add a category bonus. Weak findings alone are capped to avoid false-positive high-risk results.
-
-Risk levels: **Low** (0–30) · **Medium** (31–65) · **High** (66–100)
-
-## Rules Implemented
-
-**Date checks** — modified before created, large creation-to-modification gap, unusual date formats, both dates missing
-
-**Software checks** — creator/producer mismatch, references to editing tools (Acrobat, Preview, Photoshop, Illustrator, Canva, online PDF editors)
-
-**Missing metadata** — blank author, blank title
-
-**Structural checks** — encryption status, zero page count
+**Damika Anupama Nanayakkara** — [Portfolio](https://damika.is-a.dev/) · [GitHub](https://github.com/Damika-Anupama) · [LinkedIn](https://www.linkedin.com/in/damika-anupama)
