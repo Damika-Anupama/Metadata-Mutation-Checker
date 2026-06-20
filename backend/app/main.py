@@ -1,10 +1,15 @@
+import logging
 import os
 import shutil
-from fastapi import FastAPI, UploadFile, File, HTTPException
+import time
+import uuid
+
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.metadata_extractor import extract_metadata
 from app.mutation_checker import run_metadata_checks
+from app.observability import logger, log_event
 from app.risk_scoring import (
     calculate_risk_score,
     get_risk_level,
@@ -23,6 +28,33 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def observability_middleware(request: Request, call_next):
+    """Attach a request id, measure latency, and emit a structured access log."""
+    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+        log_event(
+            logger, logging.ERROR, "request_failed",
+            request_id=request_id, method=request.method,
+            path=request.url.path, duration_ms=elapsed_ms,
+        )
+        raise
+    elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Process-Time-ms"] = str(elapsed_ms)
+    log_event(
+        logger, logging.INFO, "request_completed",
+        request_id=request_id, method=request.method,
+        path=request.url.path, status_code=response.status_code,
+        duration_ms=elapsed_ms,
+    )
+    return response
 
 
 @app.get("/")
@@ -55,6 +87,13 @@ async def analyze_document(file: UploadFile = File(...)):
         risk_score = calculate_risk_score(findings)
         risk_level = get_risk_level(risk_score)
 
+        log_event(
+            logger, logging.INFO, "document_analyzed",
+            document_name=file.filename,
+            risk_score=risk_score, risk_level=risk_level,
+            findings_count=len(findings),
+        )
+
         report = {
             "document_name": file.filename,
             "file_type": metadata.get("file_type"),
@@ -70,6 +109,10 @@ async def analyze_document(file: UploadFile = File(...)):
         return report
 
     except Exception as e:
+        log_event(
+            logger, logging.ERROR, "analyze_failed",
+            document_name=file.filename, error=str(e),
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
     finally:
