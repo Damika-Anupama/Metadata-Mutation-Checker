@@ -36,8 +36,8 @@ Upload a PDF and the tool parses its raw metadata, runs a series of rule-based c
 | Layer | Technology |
 |---|---|
 | Frontend | Next.js 16, React 19, TypeScript 5, Tailwind CSS 4 |
-| Backend | Python, FastAPI, Uvicorn, pypdf, Pydantic |
-| Tooling / Deploy | Docker, docker-compose, Vercel (frontend demo), ESLint 9 |
+| Backend | Python, FastAPI, Uvicorn, pypdf, Pydantic, prometheus-client |
+| Tooling / Deploy | Docker, docker-compose, Vercel (frontend demo), ESLint 9, Playwright (E2E), GitHub Actions CI |
 
 ## Project structure
 
@@ -84,7 +84,7 @@ npm run dev          # http://localhost:3000
 
 ## Testing
 
-The backend has a `pytest` suite covering the scoring logic, metadata heuristics, and API contract (25 tests).
+The backend has a `pytest` suite covering the scoring logic, metadata heuristics, the API contract, and the Prometheus metrics endpoint.
 
 ```bash
 cd backend
@@ -93,7 +93,21 @@ pytest -q          # run the suite
 ruff check app tests   # lint
 ```
 
-Tests run automatically on every push and pull request via GitHub Actions (see the CI badge above).
+The frontend has a **Playwright** end-to-end suite that drives a real Chromium
+browser against the running app — covering page render, the demo/sample-document
+flow, the risk-score and findings rendering, upload validation, and tab switching.
+Because the demo path is fully client-side, the suite also runs green against the
+backend-free Vercel preview deploy.
+
+```bash
+cd frontend
+npm install
+npx playwright install chromium
+npm run test:e2e                      # run against a locally booted server
+E2E_BASE_URL=https://<preview-url> npm run test:e2e   # run against a deployed preview
+```
+
+Both suites run automatically on every push and pull request via GitHub Actions (see the CI badge above): a `backend-tests` job (pytest + ruff) and a `frontend-e2e` job (build + Playwright, with the HTML report uploaded as an artifact).
 
 ## Observability
 
@@ -110,6 +124,27 @@ Example log line:
 ```
 
 This makes the service ready for log aggregation (e.g. CloudWatch, Grafana Loki, Datadog) and per-request latency tracking.
+
+### Prometheus metrics
+
+The API also exposes a **Prometheus** scrape endpoint at `GET /metrics` (standard text exposition format), ready to wire into Prometheus + Grafana:
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `http_requests_total` | counter | `method`, `path`, `status` | Total HTTP requests processed |
+| `http_request_duration_seconds` | histogram | `method`, `path` | Request latency distribution |
+| `documents_analyzed_total` | counter | `risk_level` | Documents analyzed, by computed risk level |
+| `analyze_failures_total` | counter | — | Analyses that ended in an error |
+
+Path labels are normalized to a bounded set (`/`, `/analyze`, `/metrics`, `/other`) to keep cardinality safe. Example scrape config:
+
+```yaml
+scrape_configs:
+  - job_name: metadata-mutation-checker
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["localhost:8000"]
+```
 
 ## Screenshots
 
