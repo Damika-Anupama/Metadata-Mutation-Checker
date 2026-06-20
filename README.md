@@ -1,5 +1,7 @@
 # Metadata Mutation Checker
 
+[![CI](https://github.com/Damika-Anupama/Metadata-Mutation-Checker/actions/workflows/ci.yml/badge.svg)](https://github.com/Damika-Anupama/Metadata-Mutation-Checker/actions/workflows/ci.yml)
+
 > Full-stack PDF metadata forensics tool that flags backdating and tampering **signals** for manual review — it does **not** confirm document tampering.
 
 **🔗 Live demo:** [metadata-mutation-checker-chi.vercel.app](https://metadata-mutation-checker-chi.vercel.app/)
@@ -79,6 +81,35 @@ cd frontend
 npm install
 npm run dev          # http://localhost:3000
 ```
+
+## Testing
+
+The backend has a `pytest` suite covering the scoring logic, metadata heuristics, and API contract (25 tests).
+
+```bash
+cd backend
+pip install -r requirements.txt -r requirements-dev.txt
+pytest -q          # run the suite
+ruff check app tests   # lint
+```
+
+Tests run automatically on every push and pull request via GitHub Actions (see the CI badge above).
+
+## Observability
+
+The API emits **structured JSON logs** and tags every request for tracing:
+
+- Each response includes an `X-Request-ID` (generated if not supplied) and an `X-Process-Time-ms` latency header.
+- Every request produces a `request_completed` JSON log line with method, path, status, and duration.
+- Document analysis emits a `document_analyzed` event with the risk score, level, and number of findings; failures log a structured `analyze_failed` event.
+
+Example log line:
+
+```json
+{"ts": "2026-06-20T03:10:00Z", "level": "INFO", "logger": "metadata_checker", "message": "request_completed", "request_id": "a1b2c3", "method": "POST", "path": "/analyze", "status_code": 200, "duration_ms": 12.4}
+```
+
+This makes the service ready for log aggregation (e.g. CloudWatch, Grafana Loki, Datadog) and per-request latency tracking.
 
 ## Screenshots
 
