@@ -34,6 +34,20 @@ const suspiciousTools = [
   "online pdf",
   "scanner",
   "pdf editor",
+  "smallpdf",
+  "ilovepdf",
+  "sejda",
+  "pdf24",
+  "pdffiller",
+  "pdfcreator",
+  "nitro pdf",
+  "foxit",
+  "pdfescape",
+  "pdf converter",
+  "pdf merge",
+  "pdf compressor",
+  "ghostscript",
+  "pdfium",
 ];
 
 function cleanValue(value: unknown): string | null {
@@ -100,8 +114,40 @@ function getProducerReleaseYear(text: string): number | null {
     const year = parseInt(word[1]);
     if (year >= 2000 && year <= 2035) return year;
   }
+  // LibreOffice — 7.x → 2020, 24.x → 2024, 25.x → 2025, etc.
+  const libreoffice = text.match(/libreoffice\s+(\d+)\./i);
+  if (libreoffice) {
+    const major = parseInt(libreoffice[1]);
+    const libreYearMap: Record<number, number> = {
+      3: 2010, 4: 2013, 5: 2015, 6: 2018, 7: 2020,
+      24: 2024, 25: 2025, 26: 2026,
+    };
+    if (libreYearMap[major]) return libreYearMap[major];
+  }
+  // OpenOffice.org 3.x → 2008
+  if (/openoffice\.org\s+3\./i.test(text)) return 2008;
+  // Nitro PDF version strings
+  const nitro = text.match(/nitro\s+pdf[^\d]*(\d{4})/i);
+  if (nitro) {
+    const year = parseInt(nitro[1]);
+    if (year >= 2000 && year <= 2035) return year;
+  }
   return null;
 }
+
+const PDF_INVENTED_YEAR = 1993;
+
+const PDF_VERSION_RELEASE_YEARS: Record<string, number> = {
+  "1.0": 1993,
+  "1.1": 1994,
+  "1.2": 1996,
+  "1.3": 1999,
+  "1.4": 2001,
+  "1.5": 2003,
+  "1.6": 2004,
+  "1.7": 2006,
+  "2.0": 2017,
+};
 
 function addFinding(
   findings: Finding[],
@@ -125,6 +171,57 @@ export function runMetadataChecks(metadata: MetadataResult): Finding[] {
 
   const createdDate = safeParseDate(created);
   const modifiedDate = safeParseDate(modified);
+  const now = new Date();
+
+  // Rule: future dates
+  if (createdDate && createdDate > now) {
+    addFinding(
+      findings,
+      "Creation date is in the future",
+      "High",
+      0.95,
+      `The document's stated creation date (${created}) is in the future. No legitimate document can be created at a future time — this strongly indicates the date metadata has been manually altered or set incorrectly.`,
+      "date"
+    );
+  }
+
+  if (modifiedDate && modifiedDate > now) {
+    addFinding(
+      findings,
+      "Modification date is in the future",
+      "High",
+      0.95,
+      `The document's stated modification date (${modified}) is in the future. This strongly suggests the date metadata was manually altered.`,
+      "date"
+    );
+  }
+
+  // Rule: creation date predates PDF itself
+  if (createdDate && createdDate.getFullYear() < PDF_INVENTED_YEAR) {
+    addFinding(
+      findings,
+      "Creation date predates the PDF format",
+      "High",
+      0.97,
+      `The stated creation date (${created}) is before 1993, when Adobe invented the PDF format. No authentic PDF document could have been created before this date — this is a strong indicator of backdated or incorrect metadata.`,
+      "date"
+    );
+  }
+
+  // Rule: PDF version post-dates document creation
+  if (metadata.pdf_version && createdDate) {
+    const versionYear = PDF_VERSION_RELEASE_YEARS[metadata.pdf_version];
+    if (versionYear && createdDate.getFullYear() < versionYear) {
+      addFinding(
+        findings,
+        `Creation date predates PDF ${metadata.pdf_version} format`,
+        "High",
+        0.93,
+        `This document uses the PDF ${metadata.pdf_version} format, which was introduced in ${versionYear}. However, the stated creation date (${created}) is before that year. This is a technical impossibility — the document format did not exist when the document claims to have been created.`,
+        "date"
+      );
+    }
+  }
 
   if (modified && !created) {
     addFinding(
@@ -186,13 +283,31 @@ export function runMetadataChecks(metadata: MetadataResult): Finding[] {
       (modifiedDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    if (daysDifference > 30) {
+    if (daysDifference > 1825) {
       addFinding(
         findings,
-        "Document modified significantly after creation",
+        `Document modified ${Math.floor(daysDifference / 365)} years after creation`,
+        "High",
+        0.85,
+        `The document was last modified ${Math.floor(daysDifference / 365)} years after its stated creation date. A gap of this magnitude is a strong signal that the document was re-exported, backdated, or otherwise altered long after the original was produced.`,
+        "date"
+      );
+    } else if (daysDifference > 365) {
+      addFinding(
+        findings,
+        `Document modified over a year after creation`,
         "Medium",
-        0.75,
-        `The document was modified ${daysDifference} days after creation. This may indicate editing, conversion, or normal document handling.`,
+        0.78,
+        `The document was modified ${Math.floor(daysDifference / 30)} months after creation. A gap of more than a year between creation and modification is uncommon and may indicate post-creation editing or conversion.`,
+        "date"
+      );
+    } else if (daysDifference > 30) {
+      addFinding(
+        findings,
+        "Document modified after creation",
+        "Low",
+        0.55,
+        `The document was modified ${daysDifference} days after creation. This may indicate minor edits, format conversion, or normal document handling.`,
         "date"
       );
     }
