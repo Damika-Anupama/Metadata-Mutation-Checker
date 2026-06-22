@@ -159,13 +159,13 @@ function TrashIcon({ className }: IconProps) {
 }
 
 function DateTimeline({ metadata }: { metadata: Record<string, unknown> }) {
+  const [todayMs] = useState(() => Date.now());
   const createdStr = metadata.created_date as string | null;
   const modifiedStr = metadata.modified_date as string | null;
   if (!createdStr && !modifiedStr) return null;
 
   const createdMs = createdStr ? new Date(createdStr).getTime() : null;
   const modifiedMs = modifiedStr ? new Date(modifiedStr).getTime() : null;
-  const todayMs = Date.now();
 
   const earliest = Math.min(createdMs ?? todayMs, modifiedMs ?? todayMs);
   const totalSpan = Math.max(todayMs - earliest, 1);
@@ -353,14 +353,14 @@ function annotationKey(documentName: string, findingTitle: string): string {
 }
 
 function useAnnotations() {
-  const [map, setMap] = useState<AnnotationMap>({});
-
-  useEffect(() => {
+  const [map, setMap] = useState<AnnotationMap>(() => {
     try {
       const raw = localStorage.getItem(ANNOTATIONS_KEY);
-      if (raw) setMap(JSON.parse(raw) as AnnotationMap);
-    } catch {}
-  }, []);
+      return raw ? (JSON.parse(raw) as AnnotationMap) : {};
+    } catch {
+      return {};
+    }
+  });
 
   const get = useCallback((key: string): FindingAnnotation => {
     return map[key] ?? { status: null, note: "" };
@@ -480,14 +480,14 @@ function formatRelativeTime(ts: number): string {
 }
 
 function useHistory() {
-  const [entries, setEntries] = useState<HistoryEntry[]>([]);
-
-  useEffect(() => {
+  const [entries, setEntries] = useState<HistoryEntry[]>(() => {
     try {
       const raw = localStorage.getItem(HISTORY_KEY);
-      if (raw) setEntries(JSON.parse(raw) as HistoryEntry[]);
-    } catch {}
-  }, []);
+      return raw ? (JSON.parse(raw) as HistoryEntry[]) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const save = useCallback((report: Report) => {
     setEntries(prev => {
@@ -1056,6 +1056,7 @@ function BatchRow({
 
 export default function Home() {
   const history = useHistory();
+  const { save: saveToHistory } = history;
   const inputRef = useRef<HTMLInputElement | null>(null);
   const compareInputRefs = [useRef<HTMLInputElement | null>(null), useRef<HTMLInputElement | null>(null)] as const;
   const [mode, setMode] = useState<Mode>("analyze");
@@ -1159,7 +1160,7 @@ export default function Home() {
       try {
         const result = await requestAnalysis(selectedFile, "analyze");
         setReport(result);
-        history.save(result);
+        saveToHistory(result);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           setError(`The API did not respond within ${REQUEST_TIMEOUT_MS / 1000} seconds. Try a smaller PDF.`);
@@ -1172,7 +1173,7 @@ export default function Home() {
         setLoading(false);
       }
     },
-    [requestAnalysis]
+    [requestAnalysis, saveToHistory]
   );
 
   const selectFile = useCallback(
@@ -1325,14 +1326,14 @@ export default function Home() {
     try {
       const result = await requestAnalysis(file, `batch-${id}`);
       setBatchItems(prev => prev.map(item => item.id === id ? { ...item, status: "done" as BatchStatus, report: result } : item));
-      history.save(result);
+      saveToHistory(result);
     } catch (err) {
       const message = err instanceof DOMException && err.name === "AbortError"
         ? "Timed out"
         : err instanceof Error ? err.message : "Failed";
       setBatchItems(prev => prev.map(item => item.id === id ? { ...item, status: "error" as BatchStatus, error: message } : item));
     }
-  }, [requestAnalysis, history.save]);
+  }, [requestAnalysis, saveToHistory]);
 
   const addBatchFiles = useCallback((files: FileList) => {
     const newItems: BatchItem[] = Array.from(files)
