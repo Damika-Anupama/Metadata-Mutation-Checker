@@ -6,10 +6,12 @@ import uuid
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from app.metadata_extractor import extract_metadata
 from app.mutation_checker import run_metadata_checks
 from app.observability import logger, log_event
+from app import metrics
 from app.risk_scoring import (
     calculate_risk_score,
     get_risk_level,
@@ -48,6 +50,9 @@ async def observability_middleware(request: Request, call_next):
     elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time-ms"] = str(elapsed_ms)
+    metrics.record_request(
+        request.method, request.url.path, response.status_code, elapsed_ms / 1000
+    )
     log_event(
         logger, logging.INFO, "request_completed",
         request_id=request_id, method=request.method,
@@ -63,6 +68,13 @@ def health_check():
         "status": "running",
         "message": "Metadata Mutation Checker API is active"
     }
+
+
+@app.get("/metrics")
+def metrics_endpoint():
+    """Prometheus scrape endpoint (text exposition format)."""
+    payload, content_type = metrics.render_latest()
+    return Response(content=payload, media_type=content_type)
 
 
 @app.post("/analyze")
@@ -93,6 +105,7 @@ async def analyze_document(file: UploadFile = File(...)):
             risk_score=risk_score, risk_level=risk_level,
             findings_count=len(findings),
         )
+        metrics.record_analysis(risk_level)
 
         report = {
             "document_name": file.filename,
@@ -113,6 +126,7 @@ async def analyze_document(file: UploadFile = File(...)):
             logger, logging.ERROR, "analyze_failed",
             document_name=file.filename, error=str(e),
         )
+        metrics.record_analysis_failure()
         raise HTTPException(status_code=500, detail=str(e))
 
     finally:
