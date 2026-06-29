@@ -33,6 +33,7 @@ const DEMO_REPORT: Report = {
     subject: null,
     page_count: 8,
     is_encrypted: false,
+    incremental_updates: 2,
   },
   findings: [
     {
@@ -230,8 +231,22 @@ function formatMetadataLabel(key: string) {
   return key.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+const FINDING_CATEGORY_LABELS: Record<string, string> = {
+  date: "Date & time",
+  software: "Authoring tools",
+  missing_metadata: "Missing metadata",
+  structure: "Document structure",
+};
+
+function formatFindingCategory(category: string) {
+  return (
+    FINDING_CATEGORY_LABELS[category] ??
+    category.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+  );
+}
+
 function getMetadataGroup(key: string) {
-  if (["file_name", "file_size_bytes", "file_type", "pdf_version", "page_count", "is_encrypted"].includes(key)) return "File & structure";
+  if (["file_name", "file_size_bytes", "file_type", "pdf_version", "page_count", "is_encrypted", "incremental_updates"].includes(key)) return "File & structure";
   if (["created_date", "modified_date", "raw_created_date", "raw_modified_date"].includes(key)) return "Dates";
   if (["author", "title", "subject"].includes(key)) return "Document details";
   if (["creator", "producer"].includes(key)) return "Authoring tools";
@@ -1163,7 +1178,7 @@ function ReportView({
                       <h4 className="font-semibold text-slate-950">{finding.title}</h4>
                       <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${getSeverityBadge(finding.severity)}`}>{finding.severity}</span>
                     </div>
-                    <p className="mt-2 text-sm text-slate-500">{finding.category}</p>
+                    <p className="mt-2 text-sm text-slate-500">{formatFindingCategory(finding.category)}</p>
                     <p className="mt-2 text-sm leading-6 text-slate-600">{finding.explanation}</p>
                     <div className="mt-3 flex items-center gap-2">
                       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200">
