@@ -35,6 +35,13 @@ frontend/dist/
 frontend/build/
 frontend/.vercel/
 
+# Stray Next.js artifacts if a build is ever run from the repo root by mistake
+/node_modules/
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+
 # Logs
 *.log
 npm-debug.log*
