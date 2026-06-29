@@ -91,11 +91,16 @@ test.describe("Metadata Mutation Checker — core UI", () => {
   });
 
   test("can switch between Analyze and Compare tabs", async ({ page }) => {
-    await page.getByRole("button", { name: "Compare" }).click();
+    const compareTab = page.getByRole("tab", { name: "Compare" });
+    const analyzeTab = page.getByRole("tab", { name: "Analyze" });
+
+    await compareTab.click();
+    await expect(compareTab).toHaveAttribute("aria-selected", "true");
     await expect(page.getByText("Upload original PDF")).toBeVisible();
     await expect(page.getByText("Upload comparison PDF")).toBeVisible();
 
-    await page.getByRole("button", { name: "Analyze" }).click();
+    await analyzeTab.click();
+    await expect(analyzeTab).toHaveAttribute("aria-selected", "true");
     await expect(page.getByText("Drag & drop your file here")).toBeVisible();
   });
 });
