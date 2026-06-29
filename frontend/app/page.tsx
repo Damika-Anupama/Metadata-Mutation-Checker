@@ -986,14 +986,43 @@ export default function Home() {
       </main>
 
       <footer className="border-t border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl justify-center px-6 py-6 text-sm text-slate-500 sm:justify-end">
-          <div className="flex flex-wrap gap-3">
-            <a className="font-medium text-slate-700 transition hover:text-indigo-600" href="https://github.com/Damika-Anupama/Metadata-Mutation-Checker" rel="noreferrer" target="_blank">
-              GitHub repo
-            </a>
-            <a className="font-medium text-slate-700 transition hover:text-indigo-600" href="https://github.com/Damika-Anupama" rel="noreferrer" target="_blank">
-              Developer profile
-            </a>
+        <div className="mx-auto max-w-5xl px-6 py-8">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-sm">
+              <div className="flex items-center gap-2.5">
+                <ShieldIcon className="h-6 w-6 text-indigo-600" />
+                <span className="text-sm font-bold tracking-tight text-slate-900">Document Metadata Mutation Checker</span>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-slate-500">
+                A full-stack demo that flags PDF tampering signals from document metadata.
+                Built by{" "}
+                <a className="font-medium text-slate-700 underline-offset-2 transition hover:text-indigo-600 hover:underline" href="https://github.com/Damika-Anupama" rel="noreferrer" target="_blank">
+                  Damika Anupama
+                </a>
+                .
+              </p>
+              <div className="mt-4 flex flex-wrap gap-1.5">
+                {["Next.js", "TypeScript", "Tailwind CSS", "FastAPI"].map((tag) => (
+                  <span key={tag} className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <nav className="flex flex-col gap-2.5 text-sm" aria-label="Footer">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Links</p>
+              <a className="font-medium text-slate-600 transition hover:text-indigo-600" href="https://github.com/Damika-Anupama/Metadata-Mutation-Checker" rel="noreferrer" target="_blank">
+                Source code →
+              </a>
+              <a className="font-medium text-slate-600 transition hover:text-indigo-600" href="https://github.com/Damika-Anupama" rel="noreferrer" target="_blank">
+                Developer profile →
+              </a>
+            </nav>
+          </div>
+
+          <div className="mt-8 border-t border-slate-100 pt-5 text-xs text-slate-400">
+            For demonstration only — results are indicative and do not confirm document forgery or authenticity.
           </div>
         </div>
       </footer>
