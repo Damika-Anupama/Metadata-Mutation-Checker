@@ -371,7 +371,11 @@ function RiskScoreRing({ score, level }: { score: number; level: string }) {
   const displayScore = Math.round(clamped * progress);
 
   return (
-    <div className="relative grid h-32 w-32 shrink-0 place-items-center">
+    <div
+      aria-label={`Metadata risk score ${clamped} out of 100, ${level} risk`}
+      className="relative grid h-32 w-32 shrink-0 place-items-center"
+      role="img"
+    >
       <svg aria-hidden="true" className="h-32 w-32 -rotate-90" viewBox="0 0 112 112">
         <circle cx="56" cy="56" fill="none" r={radius} stroke="#e2e8f0" strokeWidth="10" />
         <circle
@@ -402,7 +406,11 @@ function RiskScaleBar({ score }: { score: number }) {
         <span>Risk scale</span>
         <span className="tabular-nums text-slate-500">{clamped}/100</span>
       </div>
-      <div className="relative mt-2 h-2.5 rounded-full bg-gradient-to-r from-emerald-400 via-amber-400 to-red-500">
+      <div
+        aria-label={`Risk scale: ${clamped} of 100. Bands: Low below 40, Medium 40 to 69, High 70 and above.`}
+        className="relative mt-2 h-2.5 rounded-full bg-gradient-to-r from-emerald-400 via-amber-400 to-red-500"
+        role="img"
+      >
         <div
           aria-hidden="true"
           className="absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-slate-900 shadow-md transition-[left] duration-700 ease-out"

@@ -95,6 +95,11 @@ test.describe("Metadata Mutation Checker — core UI", () => {
   }) => {
     await page.getByRole("button", { name: "Try with a sample document" }).click();
 
+    // Risk gauge exposes an accessible label for screen readers
+    await expect(
+      page.getByRole("img", { name: /Metadata risk score 68 out of 100, High risk/ })
+    ).toBeVisible();
+
     // Risk scale bar with Low/High threshold labels
     await expect(page.getByText("Risk scale")).toBeVisible();
     await expect(page.getByText("0 · Low")).toBeVisible();
