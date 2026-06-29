@@ -116,6 +116,29 @@ test.describe("Metadata Mutation Checker — core UI", () => {
     );
   });
 
+  test("surfaces a recoverable error card when analysis fails", async ({ page }) => {
+    // The suite runs without a backend, so a valid PDF upload hits /api/analyze
+    // and fails — exercising the API error path, not just client validation.
+    const tmpFile = path.join(os.tmpdir(), `mmc-e2e-${Date.now()}.pdf`);
+    fs.writeFileSync(tmpFile, "%PDF-1.4\n%%EOF\n");
+
+    const input = page.locator('input[type="file"]').first();
+    await input.setInputFiles(tmpFile);
+
+    await expect(page.getByText(/Analysis couldn.t be completed/)).toBeVisible({
+      timeout: 35_000,
+    });
+    await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+
+    // The fallback action recovers into the sample report
+    await page
+      .getByRole("button", { name: "Use the sample document instead" })
+      .click();
+    await expect(page.getByText("Demo mode")).toBeVisible();
+
+    fs.unlinkSync(tmpFile);
+  });
+
   test("can switch between Analyze and Compare tabs", async ({ page }) => {
     const compareTab = page.getByRole("tab", { name: "Compare" });
     const analyzeTab = page.getByRole("tab", { name: "Analyze" });

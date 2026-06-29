@@ -561,6 +561,7 @@ export default function Home() {
   const [showOnlyDifferences, setShowOnlyDifferences] = useState(false);
   const [loadingSeconds, setLoadingSeconds] = useState(0);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const [analysisFailed, setAnalysisFailed] = useState(false);
   const isAnyAnalysisLoading = loading || compareLoading.some(Boolean);
 
   useEffect(() => {
@@ -637,6 +638,7 @@ export default function Home() {
       setLoadingSeconds(0);
       setLoading(true);
       setError("");
+      setAnalysisFailed(false);
       setReport(null);
       setIsDemoMode(false);
 
@@ -650,6 +652,7 @@ export default function Home() {
         } else {
           setError(err instanceof Error ? err.message : "Something went wrong.");
         }
+        setAnalysisFailed(true);
       } finally {
         setLoading(false);
       }
@@ -666,6 +669,7 @@ export default function Home() {
       });
       setFile(selectedFile);
       setError("");
+      setAnalysisFailed(false);
       setReport(null);
       setExportStatus("");
       const validationMessage = validatePdfFile(selectedFile);
@@ -881,12 +885,41 @@ export default function Home() {
                 onInputChange={(event) => selectFile(event.target.files?.[0] ?? null, "input")}
                 selectedName={file?.name}
                 title="Drag & drop your file here"
-                validationMessage={error}
+                validationMessage={analysisFailed ? "" : error}
               />
             </form>
 
+            {analysisFailed && (
+              <div className="animate-fade-in-up mt-5 rounded-xl border border-red-200 bg-red-50 p-5">
+                <div className="flex items-start gap-3">
+                  <ShieldIcon className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-red-800">Analysis couldn&apos;t be completed</p>
+                    <p className="mt-1 text-sm text-red-700">{error}</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-4 focus:ring-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={!file}
+                        onClick={() => file && void analyzeFile(file)}
+                        type="button"
+                      >
+                        <SpinnerIcon className="h-4 w-4" />
+                        Try again
+                      </button>
+                      <button
+                        className="inline-flex items-center gap-2 rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50"
+                        onClick={loadDemo}
+                        type="button"
+                      >
+                        Use the sample document instead
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
-            {!report && !loading && (
+            {!report && !loading && !analysisFailed && (
               <p className="mt-4 text-center text-sm text-slate-500">
                 Don&apos;t have a PDF handy?{" "}
                 <button
@@ -899,7 +932,7 @@ export default function Home() {
               </p>
             )}
 
-            {!report && !loading && <LandingHighlights onLoadDemo={loadDemo} />}
+            {!report && !loading && !analysisFailed && <LandingHighlights onLoadDemo={loadDemo} />}
 
             {isDemoMode && report && (
               <div className="mt-5 flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
