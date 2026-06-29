@@ -90,6 +90,27 @@ test.describe("Metadata Mutation Checker — core UI", () => {
     fs.unlinkSync(tmpFile);
   });
 
+  test("demo report shows the risk scale, severity ordering and report controls", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: "Try with a sample document" }).click();
+
+    // Risk scale bar with Low/High threshold labels
+    await expect(page.getByText("Risk scale")).toBeVisible();
+    await expect(page.getByText("0 · Low")).toBeVisible();
+    await expect(page.getByText("70 · High")).toBeVisible();
+
+    // Report toolbar actions are present
+    await expect(page.getByRole("button", { name: "New analysis" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy summary" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "JSON" })).toBeVisible();
+
+    // Findings are ordered High-severity first
+    await expect(page.locator("h4").first()).toHaveText(
+      "Creator/Producer Version Mismatch"
+    );
+  });
+
   test("can switch between Analyze and Compare tabs", async ({ page }) => {
     const compareTab = page.getByRole("tab", { name: "Compare" });
     const analyzeTab = page.getByRole("tab", { name: "Analyze" });
