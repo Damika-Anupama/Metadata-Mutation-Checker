@@ -379,6 +379,30 @@ function RiskScoreRing({ score, level }: { score: number; level: string }) {
   );
 }
 
+function RiskScaleBar({ score }: { score: number }) {
+  const clamped = Math.max(0, Math.min(score, 100));
+  return (
+    <div className="mt-5">
+      <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+        <span>Risk scale</span>
+        <span className="tabular-nums text-slate-500">{clamped}/100</span>
+      </div>
+      <div className="relative mt-2 h-2.5 rounded-full bg-gradient-to-r from-emerald-400 via-amber-400 to-red-500">
+        <div
+          aria-hidden="true"
+          className="absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-slate-900 shadow-md transition-[left] duration-700 ease-out"
+          style={{ left: `${clamped}%` }}
+        />
+      </div>
+      <div className="mt-2 flex justify-between text-xs font-medium text-slate-400">
+        <span>0 · Low</span>
+        <span>40 · Medium</span>
+        <span>70 · High</span>
+      </div>
+    </div>
+  );
+}
+
 function TabButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
   return (
     <button
@@ -1097,14 +1121,17 @@ function ReportView({
         </div>
         {exportStatus && <p className="mt-3 text-sm font-medium text-emerald-700">{exportStatus}</p>}
 
-        <div className="mt-6 flex flex-col gap-6 rounded-xl border border-slate-200 bg-slate-50 p-5 sm:flex-row sm:items-center">
-          <RiskScoreRing level={report.metadata_risk_level} score={report.metadata_risk_score} />
-          <div className="min-w-0 flex-1">
-            <div className={`inline-flex rounded-full border px-3.5 py-1.5 text-sm font-semibold ${getRiskClass(report.metadata_risk_level)}`}>
-              {report.metadata_risk_level} metadata risk
+        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-5">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+            <RiskScoreRing level={report.metadata_risk_level} score={report.metadata_risk_score} />
+            <div className="min-w-0 flex-1">
+              <div className={`inline-flex rounded-full border px-3.5 py-1.5 text-sm font-semibold ${getRiskClass(report.metadata_risk_level)}`}>
+                {report.metadata_risk_level} metadata risk
+              </div>
+              <p className="mt-4 leading-7 text-slate-600">{report.summary}</p>
             </div>
-            <p className="mt-4 leading-7 text-slate-600">{report.summary}</p>
           </div>
+          <RiskScaleBar score={report.metadata_risk_score} />
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
