@@ -360,10 +360,12 @@ function RiskScoreRing({ score, level }: { score: number; level: string }) {
 function TabButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
   return (
     <button
-      className={`inline-flex items-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition ${
+      aria-selected={active}
+      className={`inline-flex items-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
         active ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:bg-white/70 hover:text-slate-700"
       }`}
       onClick={onClick}
+      role="tab"
       type="button"
     >
       {children}
@@ -733,7 +735,7 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-950">
-      <header className="border-b border-slate-200 bg-white">
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex min-h-[76px] max-w-5xl flex-col gap-4 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <ShieldIcon className="h-8 w-8 shrink-0 text-indigo-600" />
@@ -752,7 +754,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="inline-flex w-fit items-center gap-1 rounded-lg bg-slate-100 p-1">
+          <div aria-label="View mode" className="inline-flex w-fit items-center gap-1 rounded-lg bg-slate-100 p-1" role="tablist">
             <TabButton active={mode === "analyze"} onClick={() => switchMode("analyze")}>
               <EyeIcon className="h-4 w-4" />
               Analyze
