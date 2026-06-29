@@ -2,7 +2,7 @@
 
 import type { ChangeEvent, DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CompareRow, CompareSlot, IconProps, Mode, Report } from "@/lib/types";
+import type { CompareRow, CompareSlot, Finding, IconProps, Mode, Report } from "@/lib/types";
 
 const ANALYZE_ENDPOINT = "/api/analyze";
 const REQUEST_TIMEOUT_MS = 30000;
@@ -189,6 +189,33 @@ function getRiskRingColor(level: string) {
   if (level === "High") return "#dc2626";
   if (level === "Medium") return "#d97706";
   return "#059669";
+}
+
+function getSeverityBadge(severity: string) {
+  if (severity === "High") return "border-red-200 bg-red-50 text-red-700";
+  if (severity === "Medium") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-emerald-200 bg-emerald-50 text-emerald-700";
+}
+
+function getSeverityAccent(severity: string) {
+  if (severity === "High") return "border-l-red-500";
+  if (severity === "Medium") return "border-l-amber-500";
+  return "border-l-emerald-500";
+}
+
+function getConfidenceBar(severity: string) {
+  if (severity === "High") return "bg-red-500";
+  if (severity === "Medium") return "bg-amber-500";
+  return "bg-emerald-500";
+}
+
+const SEVERITY_ORDER: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
+
+function sortFindingsBySeverity(findings: Finding[]) {
+  return [...findings].sort((a, b) => {
+    const order = (SEVERITY_ORDER[a.severity] ?? 3) - (SEVERITY_ORDER[b.severity] ?? 3);
+    return order !== 0 ? order : b.confidence - a.confidence;
+  });
 }
 
 function formatBytes(value: unknown) {
@@ -1018,16 +1045,25 @@ function ReportView({
             <p className="mt-4 rounded-lg bg-emerald-50 p-4 text-sm font-medium text-emerald-700">No suspicious metadata indicators were detected.</p>
           ) : (
             <div className="mt-4 grid gap-3">
-              {report.findings.map((finding, index) => (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4" key={`${finding.title}-${index}`}>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h4 className="font-semibold text-slate-950">{finding.title}</h4>
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm">{finding.severity}</span>
+              {sortFindingsBySeverity(report.findings).map((finding, index) => {
+                const confidencePct = Math.round(finding.confidence * 100);
+                return (
+                  <div className={`rounded-lg border border-l-4 border-slate-200 bg-slate-50 p-4 ${getSeverityAccent(finding.severity)}`} key={`${finding.title}-${index}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h4 className="font-semibold text-slate-950">{finding.title}</h4>
+                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${getSeverityBadge(finding.severity)}`}>{finding.severity}</span>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-500">{finding.category}</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{finding.explanation}</p>
+                    <div className="mt-3 flex items-center gap-2">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200">
+                        <div className={`h-full rounded-full ${getConfidenceBar(finding.severity)}`} style={{ width: `${confidencePct}%` }} />
+                      </div>
+                      <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-500">{confidencePct}% confidence</span>
+                    </div>
                   </div>
-                  <p className="mt-2 text-sm text-slate-500">{finding.category} · {Math.round(finding.confidence * 100)}% confidence</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">{finding.explanation}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
