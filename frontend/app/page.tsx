@@ -224,6 +224,67 @@ function getLoadingStep(seconds: number) {
   return "Uploading file";
 }
 
+function LandingHighlights({ onLoadDemo }: { onLoadDemo: () => void }) {
+  const steps = [
+    {
+      icon: UploadIcon,
+      title: "1 · Upload a PDF",
+      body: "Drop in any PDF up to 8MB. Nothing is stored — analysis runs on the spot and starts automatically.",
+    },
+    {
+      icon: ShieldIcon,
+      title: "2 · Scan the metadata",
+      body: "Creator/producer chains, timestamps, and missing fields are checked against known tampering patterns.",
+    },
+    {
+      icon: EyeIcon,
+      title: "3 · Read the report",
+      body: "Get a 0–100 risk score, ranked findings with confidence, and a recommended next step you can export.",
+    },
+  ];
+
+  const features = [
+    { icon: ShieldIcon, label: "Rule-based risk scoring" },
+    { icon: CompareIcon, label: "Side-by-side document compare" },
+    { icon: FileIcon, label: "Searchable, grouped metadata" },
+    { icon: DownloadIcon, label: "Export as JSON or text" },
+  ];
+
+  return (
+    <section className="animate-fade-in-up mt-10">
+      <div className="grid gap-4 sm:grid-cols-3">
+        {steps.map(({ icon: Icon, title, body }) => (
+          <div key={title} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+              <Icon className="h-5 w-5" />
+            </span>
+            <h3 className="mt-4 text-sm font-bold tracking-tight text-slate-900">{title}</h3>
+            <p className="mt-1.5 text-sm leading-6 text-slate-500">{body}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">What you get</span>
+        {features.map(({ icon: Icon, label }) => (
+          <span key={label} className="inline-flex items-center gap-2 text-sm font-medium text-slate-600">
+            <Icon className="h-4 w-4 text-indigo-500" />
+            {label}
+          </span>
+        ))}
+        <button
+          className="ml-auto inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-100"
+          onClick={onLoadDemo}
+          type="button"
+        >
+          <EyeIcon className="h-4 w-4" />
+          See a sample report
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function DashboardMetric({ label, value, tone = "slate" }: { label: string; value: string; tone?: "slate" | "indigo" | "amber" | "emerald" }) {
   const toneClass = {
     slate: "bg-slate-50 text-slate-950",
@@ -727,6 +788,8 @@ export default function Home() {
                 </button>
               </p>
             )}
+
+            {!report && !loading && <LandingHighlights onLoadDemo={loadDemo} />}
 
             {isDemoMode && report && (
               <div className="mt-5 flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
