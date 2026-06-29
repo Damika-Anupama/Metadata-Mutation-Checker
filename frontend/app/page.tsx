@@ -640,6 +640,18 @@ export default function Home() {
     setIsDemoMode(true);
   }, []);
 
+  const resetAnalysis = useCallback(() => {
+    setFile(null);
+    setReport(null);
+    setError("");
+    setExportStatus("");
+    setIsDemoMode(false);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    inputRef.current?.click();
+  }, []);
+
   const selectCompareFile = useCallback(
     async (slot: CompareSlot, selectedFile: File | null, source: "input" | "drop") => {
       console.info(`${LOG_PREFIX} compare file selected`, {
@@ -856,7 +868,7 @@ export default function Home() {
               </div>
             )}
 
-            {report && <ReportView exportStatus={exportStatus} onCopySummary={copySummary} onDownloadJson={downloadJson} onDownloadText={downloadText} report={report} />}
+            {report && <ReportView exportStatus={exportStatus} onCopySummary={copySummary} onDownloadJson={downloadJson} onDownloadText={downloadText} onReset={resetAnalysis} report={report} />}
           </>
         ) : (
           <>
@@ -1048,12 +1060,14 @@ function ReportView({
   onCopySummary,
   onDownloadJson,
   onDownloadText,
+  onReset,
 }: {
   report: Report;
   exportStatus: string;
   onCopySummary: () => void;
   onDownloadJson: () => void;
   onDownloadText: () => void;
+  onReset: () => void;
 }) {
   return (
     <section className="animate-fade-in-up mt-8 grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
@@ -1064,6 +1078,10 @@ function ReportView({
             <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">{report.document_name}</h2>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" onClick={onReset} type="button">
+              <UploadIcon className="h-4 w-4" />
+              New analysis
+            </button>
             <button className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" onClick={onCopySummary} type="button">
               Copy summary
             </button>
