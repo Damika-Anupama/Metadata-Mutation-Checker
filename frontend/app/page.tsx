@@ -331,7 +331,29 @@ function DashboardMetric({ label, value, tone = "slate" }: { label: string; valu
 function RiskScoreRing({ score, level }: { score: number; level: string }) {
   const radius = 42;
   const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (Math.max(0, Math.min(score, 100)) / 100) * circumference;
+  const clamped = Math.max(0, Math.min(score, 100));
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const duration = prefersReducedMotion ? 0 : 900;
+
+    let raf = 0;
+    let start = 0;
+    const tick = (now: number) => {
+      if (!start) start = now;
+      const t = duration === 0 ? 1 : Math.min(1, (now - start) / duration);
+      setProgress(1 - Math.pow(1 - t, 3)); // easeOutCubic
+      if (t < 1) raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [clamped]);
+
+  const offset = circumference - (clamped / 100) * progress * circumference;
+  const displayScore = Math.round(clamped * progress);
 
   return (
     <div className="relative grid h-32 w-32 shrink-0 place-items-center">
@@ -350,7 +372,7 @@ function RiskScoreRing({ score, level }: { score: number; level: string }) {
         />
       </svg>
       <div className="absolute text-center">
-        <p className={`text-3xl font-black ${getRiskAccent(level)}`}>{score}</p>
+        <p className={`text-3xl font-black tabular-nums ${getRiskAccent(level)}`}>{displayScore}</p>
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">risk score</p>
       </div>
     </div>
