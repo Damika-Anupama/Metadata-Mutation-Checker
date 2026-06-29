@@ -782,6 +782,23 @@ export default function Home() {
     URL.revokeObjectURL(url);
   };
 
+  const downloadCompareCsv = () => {
+    const [left, right] = compareReports;
+    if (!left || !right) return;
+    const escape = (value: string) => `"${String(value).replace(/"/g, '""')}"`;
+    const rows = [
+      ["Field", left.document_name, right.document_name, "Status"],
+      ...compareRows.map((row) => [
+        formatMetadataLabel(row.key),
+        row.left,
+        row.right,
+        row.matches ? "Match" : "Different",
+      ]),
+    ];
+    const csv = rows.map((cells) => cells.map(escape).join(",")).join("\n");
+    downloadBlob(csv, "metadata-comparison.csv", "text/csv");
+  };
+
   const buildReportSummary = (currentReport: Report) => [
     `Metadata report: ${currentReport.document_name}`,
     `Risk: ${currentReport.metadata_risk_level} (${currentReport.metadata_risk_score}/100)`,
@@ -1026,15 +1043,25 @@ export default function Home() {
                       {compareReports[0].document_name} compared with {compareReports[1].document_name}
                     </p>
                   </div>
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
-                    <input
-                      checked={showOnlyDifferences}
-                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                      onChange={(event) => setShowOnlyDifferences(event.target.checked)}
-                      type="checkbox"
-                    />
-                    Show only differences
-                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
+                      <input
+                        checked={showOnlyDifferences}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        onChange={(event) => setShowOnlyDifferences(event.target.checked)}
+                        type="checkbox"
+                      />
+                      Show only differences
+                    </label>
+                    <button
+                      className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                      onClick={downloadCompareCsv}
+                      type="button"
+                    >
+                      <DownloadIcon className="h-4 w-4" />
+                      CSV
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-6 grid gap-3 sm:grid-cols-4">
