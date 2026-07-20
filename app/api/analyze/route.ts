@@ -10,6 +10,7 @@ import {
 } from "../../../lib/metadata-analysis";
 import { parsePdfStructure, type PdfStructure } from "../../../lib/pdf-structure";
 import { extractXmp } from "../../../lib/xmp";
+import { analyzeSignatures } from "../../../lib/pdf-signatures";
 
 export const runtime = "nodejs";
 
@@ -108,6 +109,7 @@ function extractPdfMetadata(bytes: Uint8Array, file: File): MetadataResult {
     metadataKeys.map((key) => [key, extractMetadataValue(pdfText, key)])
   );
   const xmp = extractXmp(pdfText);
+  const signatures = analyzeSignatures(pdfText);
 
   return {
     file_name: file.name,
@@ -135,6 +137,9 @@ function extractPdfMetadata(bytes: Uint8Array, file: File): MetadataResult {
     xmp_author: xmp.creator,
     xmp_pdfa_part: xmp.pdfa_part,
     xmp_pdfa_conformance: xmp.pdfa_conformance,
+    has_signature: signatures.has_signature,
+    signature_count: signatures.signature_count,
+    modified_after_signing: signatures.modified_after_signing,
   };
 }
 

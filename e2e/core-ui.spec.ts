@@ -108,6 +108,30 @@ test.describe("Metadata Mutation Checker — core UI", () => {
     await expect(page.getByText(/XMP metadata disagrees with the document info dictionary/i)).toBeVisible();
   });
 
+  test("flags a document modified after it was digitally signed (F6)", async ({ page }) => {
+    // A signature whose /ByteRange covers bytes up to offset 1500, followed by
+    // an appended revision — content the signature can't cover.
+    const base =
+      "%PDF-1.7\n" +
+      "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
+      "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
+      "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]>>endobj\n" +
+      "5 0 obj<</Type/Sig/SubFilter/adbe.pkcs7.detached/ByteRange [0 200 1200 300]>>endobj\n" +
+      "trailer<</Root 1 0 R>>\n%%EOF\n";
+    const revision =
+      "6 0 obj<</Type/Annot>>endobj\nxref\n0 1\ntrailer<</Root 1 0 R>>\nstartxref\n1500\n%%EOF\n";
+    const tamperedPdf = Buffer.from(base.padEnd(1500, " ") + revision);
+
+    await page.locator('input[name="file"]').setInputFiles({
+      name: "signed.pdf",
+      mimeType: "application/pdf",
+      buffer: tamperedPdf,
+    });
+
+    await expect(page.getByRole("heading", { name: "signed.pdf" })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/modified after it was digitally signed/i)).toBeVisible();
+  });
+
   test("reconstructs a shared report from the URL hash", async ({ page }) => {
     const report = {
       document_name: "shared_doc.pdf",

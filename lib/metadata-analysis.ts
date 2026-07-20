@@ -38,6 +38,10 @@ export type MetadataResult = {
   // PDF/A archival conformance declared in XMP (F7).
   xmp_pdfa_part?: string | null;
   xmp_pdfa_conformance?: string | null;
+  // Digital-signature forensics (F6).
+  has_signature?: boolean;
+  signature_count?: number;
+  modified_after_signing?: boolean;
 };
 
 const suspiciousTools = [
@@ -502,6 +506,31 @@ export function runMetadataChecks(metadata: MetadataResult): Finding[] {
         "consistency"
       );
     }
+  }
+
+  // Rule: document revised after being digitally signed (F6). Content appended
+  // beyond the signature's /ByteRange coverage means the signature no longer
+  // covers the whole file — the strongest structural tampering signal there is.
+  if (metadata.modified_after_signing) {
+    addFinding(
+      findings,
+      "Document was modified after it was digitally signed",
+      "High",
+      0.9,
+      "The file contains content appended after the byte range covered by its digital signature. A valid signature is meant to cover the entire document, so data added afterwards is outside the signed content and invalidates the signature — a strong indicator the document was altered after signing.",
+      "structure"
+    );
+  } else if (metadata.has_signature) {
+    // Presence of a signature is itself notable context for a reviewer; kept
+    // low so it doesn't inflate risk for a legitimately signed document.
+    addFinding(
+      findings,
+      "Document is digitally signed",
+      "Low",
+      0.3,
+      "The document contains a digital signature. This is normal for signed agreements and is surfaced for context; verify the signature in a trusted PDF reader to confirm its validity.",
+      "structure"
+    );
   }
 
   // Rule: PDF/A conformance is declared but the file was appended to (F7). PDF/A
