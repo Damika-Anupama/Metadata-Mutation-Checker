@@ -111,6 +111,28 @@ test.describe("Metadata Mutation Checker — core UI", () => {
     await expect(page.getByText("Example shared finding")).toBeVisible();
   });
 
+  test("offers a Print / PDF export of a report that invokes window.print", async ({ page }) => {
+    // Stub the native print dialog so clicking the button is observable and
+    // doesn't block the test on a real OS dialog.
+    await page.addInitScript(() => {
+      (window as unknown as { __printed: boolean }).__printed = false;
+      window.print = () => {
+        (window as unknown as { __printed: boolean }).__printed = true;
+      };
+    });
+    await page.reload();
+
+    await page.getByRole("button", { name: /Try with a sample document/i }).click();
+    await expect(page.getByRole("heading", { name: "service_agreement_2022.pdf" })).toBeVisible();
+
+    const printButton = page.getByRole("button", { name: /Print \/ PDF/i });
+    await expect(printButton).toBeVisible();
+    await printButton.click();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __printed: boolean }).__printed))
+      .toBe(true);
+  });
+
   test("mode tabs expose ARIA tab semantics and arrow-key navigation", async ({ page }) => {
     const tablist = page.getByRole("tablist", { name: "Analysis modes" });
     await expect(tablist).toBeVisible();

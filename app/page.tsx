@@ -1373,6 +1373,12 @@ export default function Home() {
     }
   }, [report]);
 
+  const printReport = useCallback(() => {
+    // The print stylesheet (globals.css @media print) isolates the report
+    // subtree, so the browser's native dialog can save it as a clean PDF.
+    window.print();
+  }, []);
+
   const selectCompareFile = useCallback(
     async (slot: CompareSlot, selectedFile: File | null, source: "input" | "drop") => {
       console.info(`${LOG_PREFIX} compare file selected`, {
@@ -1773,7 +1779,7 @@ export default function Home() {
               </div>
             )}
 
-            {report && <ReportView exportStatus={exportStatus} onCopySummary={copySummary} onDownloadJson={downloadJson} onDownloadText={downloadText} onShare={shareReport} report={report} />}
+            {report && <ReportView exportStatus={exportStatus} onCopySummary={copySummary} onDownloadJson={downloadJson} onDownloadText={downloadText} onPrint={printReport} onShare={shareReport} report={report} />}
           </>
         ) : mode === "compare" ? (
           <>
@@ -1977,6 +1983,7 @@ function ReportView({
   onDownloadJson,
   onDownloadText,
   onShare,
+  onPrint,
 }: {
   report: Report;
   exportStatus: string;
@@ -1984,20 +1991,26 @@ function ReportView({
   onDownloadJson: () => void;
   onDownloadText: () => void;
   onShare?: () => void;
+  onPrint?: () => void;
 }) {
   const annotations = useAnnotations();
   return (
-    <section className="mt-8 grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
+    <section className="report-print-root mt-8 grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Analysis dashboard</p>
             <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">{report.document_name}</h2>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="no-print flex flex-wrap gap-2">
             {onShare && (
               <button className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" onClick={onShare} type="button">
                 Share
+              </button>
+            )}
+            {onPrint && (
+              <button className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" onClick={onPrint} type="button">
+                Print / PDF
               </button>
             )}
             <button className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" onClick={onCopySummary} type="button">
