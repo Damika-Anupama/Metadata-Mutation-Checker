@@ -16,6 +16,9 @@ export type XmpMetadata = {
   modify_date: string | null;
   title: string | null;
   creator: string | null;
+  // PDF/A archival-conformance identifiers (F7), from the pdfaid namespace.
+  pdfa_part: string | null;
+  pdfa_conformance: string | null;
 };
 
 const EMPTY_XMP: XmpMetadata = {
@@ -26,6 +29,8 @@ const EMPTY_XMP: XmpMetadata = {
   modify_date: null,
   title: null,
   creator: null,
+  pdfa_part: null,
+  pdfa_conformance: null,
 };
 
 function decodeXmlEntities(value: string): string {
@@ -76,5 +81,7 @@ export function extractXmp(pdfText: string): XmpMetadata {
     modify_date: readProperty(xml, "xmp:ModifyDate"),
     title: readProperty(xml, "dc:title"),
     creator: readProperty(xml, "dc:creator"),
+    pdfa_part: readProperty(xml, "pdfaid:part"),
+    pdfa_conformance: readProperty(xml, "pdfaid:conformance"),
   };
 }

@@ -35,6 +35,9 @@ export type MetadataResult = {
   xmp_modify_date?: string | null;
   xmp_title?: string | null;
   xmp_author?: string | null;
+  // PDF/A archival conformance declared in XMP (F7).
+  xmp_pdfa_part?: string | null;
+  xmp_pdfa_conformance?: string | null;
 };
 
 const suspiciousTools = [
@@ -153,6 +156,42 @@ function getProducerReleaseYear(text: string): number | null {
   if (nitro) {
     const year = parseInt(nitro[1]);
     if (year >= 2000 && year <= 2035) return year;
+  }
+  // Ghostscript — versioned, mapped to a conservative (earliest-plausible)
+  // release year by major so the impossible-timeline rule never false-positives.
+  const ghostscript = text.match(/ghostscript\s+(\d+)\./i);
+  if (ghostscript) {
+    const major = parseInt(ghostscript[1]);
+    if (major === 8) return 2007;
+    if (major === 9) return 2010;
+    if (major >= 10 && major <= 15) return 2022;
+  }
+  // Foxit / PDF-XChange embed an explicit year in many builds.
+  const foxit = text.match(/foxit[^\d]*(\d{4})/i);
+  if (foxit) {
+    const year = parseInt(foxit[1]);
+    if (year >= 2005 && year <= 2035) return year;
+  }
+  const pdfXchange = text.match(/pdf-?xchange[^\d]*(\d{4})/i);
+  if (pdfXchange) {
+    const year = parseInt(pdfXchange[1]);
+    if (year >= 2005 && year <= 2035) return year;
+  }
+  // Web / SaaS exporters that simply did not exist before a known founding year.
+  // Presence alone bounds the earliest possible authoring date.
+  const foundingYears: Array<[RegExp, number]> = [
+    [/\bcanva\b/i, 2013],
+    [/google\s+docs/i, 2012],
+    [/\boverleaf\b/i, 2014],
+    [/\bnotion\b/i, 2018],
+    [/\bfigma\b/i, 2016],
+    [/skia\/pdf/i, 2015],
+    [/wkhtmltopdf/i, 2010],
+    [/headlesschrome/i, 2017],
+    [/microsoft:\s*print\s+to\s+pdf/i, 2015],
+  ];
+  for (const [pattern, year] of foundingYears) {
+    if (pattern.test(text)) return year;
   }
   return null;
 }
@@ -465,7 +504,27 @@ export function runMetadataChecks(metadata: MetadataResult): Finding[] {
     }
   }
 
+  // Rule: PDF/A conformance is declared but the file was appended to (F7). PDF/A
+  // is an archival format intended to be self-contained and stable; an
+  // incremental update after archiving contradicts that guarantee.
+  if (metadata.xmp_pdfa_part && metadata.incremental_updates && metadata.incremental_updates > 0) {
+    const conformance = formatPdfaLabel(metadata.xmp_pdfa_part, metadata.xmp_pdfa_conformance);
+    addFinding(
+      findings,
+      "PDF/A archival conformance declared but the document was modified",
+      "Medium",
+      0.7,
+      `The document declares ${conformance} archival conformance, yet its structure contains ${metadata.incremental_updates} incremental update section${metadata.incremental_updates > 1 ? "s" : ""} appended after the original. A conformant archival file is meant to be stable and self-contained, so post-archiving edits are inconsistent with the declared conformance.`,
+      "consistency"
+    );
+  }
+
   return findings;
+}
+
+function formatPdfaLabel(part: string, conformance: string | null | undefined): string {
+  const level = conformance ? conformance.trim().toUpperCase() : "";
+  return `PDF/A-${part.trim()}${level ? level.toLowerCase() : ""}`;
 }
 
 function normalizeText(value: string | null | undefined): string | null {

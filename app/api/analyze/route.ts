@@ -133,6 +133,8 @@ function extractPdfMetadata(bytes: Uint8Array, file: File): MetadataResult {
     xmp_modify_date: xmp.modify_date,
     xmp_title: xmp.title,
     xmp_author: xmp.creator,
+    xmp_pdfa_part: xmp.pdfa_part,
+    xmp_pdfa_conformance: xmp.pdfa_conformance,
   };
 }
 

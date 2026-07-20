@@ -102,3 +102,62 @@ describe("runMetadataChecks — XMP/Info mismatch (F2)", () => {
     expect(has(makeMeta({ xmp_present: false }), "XMP metadata disagrees")).toBe(false);
   });
 });
+
+describe("extractXmp — PDF/A identifiers (F7)", () => {
+  it("reads pdfaid part and conformance", () => {
+    const packet =
+      '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">' +
+      '<rdf:Description xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/">' +
+      "<pdfaid:part>2</pdfaid:part><pdfaid:conformance>B</pdfaid:conformance>" +
+      "</rdf:Description></rdf:RDF></x:xmpmeta>";
+    const xmp = extractXmp(packet);
+    expect(xmp.pdfa_part).toBe("2");
+    expect(xmp.pdfa_conformance).toBe("B");
+  });
+});
+
+describe("runMetadataChecks — PDF/A modified-after-archiving (F7)", () => {
+  const has = (m: MetadataResult, needle: string) =>
+    runMetadataChecks(m).some((f) => f.title.toLowerCase().includes(needle.toLowerCase()));
+
+  it("flags PDF/A conformance with incremental updates", () => {
+    const meta = makeMeta({
+      xmp_present: true,
+      xmp_pdfa_part: "2",
+      xmp_pdfa_conformance: "B",
+      incremental_updates: 2,
+    });
+    expect(has(meta, "PDF/A archival conformance declared but")).toBe(true);
+  });
+
+  it("does not flag a clean PDF/A document with no incremental updates", () => {
+    const meta = makeMeta({
+      xmp_present: true,
+      xmp_pdfa_part: "1",
+      xmp_pdfa_conformance: "A",
+      incremental_updates: 0,
+    });
+    expect(has(meta, "PDF/A archival conformance declared but")).toBe(false);
+  });
+});
+
+describe("getProducerReleaseYear enrichment (F7)", () => {
+  // Exercised indirectly via the impossible-timeline rule: a tool that did not
+  // exist at the claimed creation date must surface the post-dates finding.
+  const postDates = (producer: string, createdYear: string) =>
+    runMetadataChecks(
+      makeMeta({ producer, creator: "", created_date: `${createdYear}-01-01T00:00:00Z`, raw_created_date: null })
+    ).some((f) => f.title.toLowerCase().includes("authoring tool post-dates"));
+
+  it("flags Canva claiming pre-2013 creation", () => {
+    expect(postDates("Canva", "2008")).toBe(true);
+  });
+
+  it("flags Ghostscript 10.x claiming a 2015 creation", () => {
+    expect(postDates("Ghostscript 10.02", "2015")).toBe(true);
+  });
+
+  it("does not flag Canva with a plausible post-2013 creation", () => {
+    expect(postDates("Canva", "2020")).toBe(false);
+  });
+});
