@@ -1033,7 +1033,15 @@ function BatchRow({
         <td className="px-4 py-3 text-right">
           <div className="flex items-center justify-end gap-1">
             {item.status === "done" && (
-              <ChevronDownIcon className={`h-4 w-4 text-slate-400 transition-transform ${item.expanded ? "rotate-180" : ""}`} />
+              <button
+                aria-expanded={item.expanded}
+                aria-label={`${item.expanded ? "Collapse" : "Expand"} report for ${item.file.name}`}
+                className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
+                type="button"
+              >
+                <ChevronDownIcon className={`h-4 w-4 transition-transform ${item.expanded ? "rotate-180" : ""}`} />
+              </button>
             )}
             <button
               className="ml-1 rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
