@@ -164,8 +164,17 @@ function DateTimeline({ metadata }: { metadata: Record<string, unknown> }) {
   const modifiedStr = metadata.modified_date as string | null;
   if (!createdStr && !modifiedStr) return null;
 
-  const createdMs = createdStr ? new Date(createdStr).getTime() : null;
-  const modifiedMs = modifiedStr ? new Date(modifiedStr).getTime() : null;
+  const toMs = (value: string | null) => {
+    if (!value) return null;
+    const ms = new Date(value).getTime();
+    return Number.isNaN(ms) ? null : ms;
+  };
+  const createdMs = toMs(createdStr);
+  const modifiedMs = toMs(modifiedStr);
+
+  // Both dates present but unparseable (parsePdfDate can return a raw string):
+  // guarding only against null would let NaN flow into every SVG coordinate.
+  if (createdMs === null && modifiedMs === null) return null;
 
   const earliest = Math.min(createdMs ?? todayMs, modifiedMs ?? todayMs);
   const totalSpan = Math.max(todayMs - earliest, 1);
@@ -281,7 +290,10 @@ function getDateGapLabel(report: Report): string {
   const created = report.extracted_metadata.created_date as string | null;
   const modified = report.extracted_metadata.modified_date as string | null;
   if (!created || !modified) return "—";
-  const diff = new Date(modified).getTime() - new Date(created).getTime();
+  const createdMs = new Date(created).getTime();
+  const modifiedMs = new Date(modified).getTime();
+  if (Number.isNaN(createdMs) || Number.isNaN(modifiedMs)) return "—";
+  const diff = modifiedMs - createdMs;
   if (diff < 0) return "Modified before created";
   const days = Math.floor(diff / 86400000);
   if (days === 0) return "Same day";
@@ -792,6 +804,7 @@ function UploadDropzone({
       <input
         ref={inputRef}
         accept="application/pdf"
+        aria-label="Upload a PDF file"
         className="sr-only"
         name="file"
         onChange={onInputChange}
@@ -880,7 +893,7 @@ function BatchDropzone({
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      <input ref={inputRef} accept="application/pdf" className="sr-only" multiple onChange={onInputChange} type="file" />
+      <input ref={inputRef} accept="application/pdf" aria-label="Upload PDF files" className="sr-only" multiple onChange={onInputChange} type="file" />
       <div className="flex max-w-sm flex-col items-center">
         <LayersIcon className="mb-4 h-10 w-10 text-slate-400" />
         <p className="text-base font-medium text-slate-700">
@@ -1163,6 +1176,11 @@ export default function Home() {
         throw new Error(detail);
       }
 
+      if (typeof data !== "object" || data === null || !Array.isArray((data as Report).findings)) {
+        console.error(`${LOG_PREFIX} unexpected analyze response shape`, { requestId });
+        throw new Error("The analysis service returned an unexpected response.");
+      }
+
       const analyzedReport = data as Report;
       console.info(`${LOG_PREFIX} analysis completed`, {
         requestId,
@@ -1340,8 +1358,12 @@ export default function Home() {
 
   const copySummary = async () => {
     if (!report) return;
-    await navigator.clipboard.writeText(buildReportSummary(report));
-    setExportStatus("Summary copied to clipboard.");
+    try {
+      await navigator.clipboard.writeText(buildReportSummary(report));
+      setExportStatus("Summary copied to clipboard.");
+    } catch {
+      setExportStatus("Couldn't copy to clipboard — try selecting the summary manually.");
+    }
   };
 
   const switchMode = (nextMode: Mode) => {
@@ -1415,8 +1437,12 @@ export default function Home() {
   const batchCopySummary = useCallback(async (id: string) => {
     const item = batchItems.find(i => i.id === id);
     if (!item?.report) return;
-    await navigator.clipboard.writeText(buildReportSummary(item.report));
-    setBatchExportStatuses(prev => ({ ...prev, [id]: "Summary copied to clipboard." }));
+    try {
+      await navigator.clipboard.writeText(buildReportSummary(item.report));
+      setBatchExportStatuses(prev => ({ ...prev, [id]: "Summary copied to clipboard." }));
+    } catch {
+      setBatchExportStatuses(prev => ({ ...prev, [id]: "Couldn't copy to clipboard." }));
+    }
   }, [batchItems]);
 
   const batchDownloadJson = useCallback((id: string) => {
@@ -1457,7 +1483,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="inline-flex w-fit items-center gap-1 rounded-lg bg-slate-100 p-1">
+          <div className="flex w-full flex-wrap items-center gap-1 rounded-lg bg-slate-100 p-1 sm:inline-flex sm:w-fit sm:flex-nowrap">
             <TabButton active={mode === "analyze"} onClick={() => switchMode("analyze")}>
               <EyeIcon className="h-4 w-4" />
               Analyze
