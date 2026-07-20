@@ -480,14 +480,23 @@ function formatRelativeTime(ts: number): string {
 }
 
 function useHistory() {
-  const [entries, setEntries] = useState<HistoryEntry[]>(() => {
+  const [entries, setEntries] = useState<HistoryEntry[]>([]);
+
+  // Load persisted history on the client only. Reading localStorage in the
+  // useState initializer runs during SSR prerender (throws → []) and again on
+  // the client (populated), which produces a React hydration mismatch — and a
+  // visible flash of the History count — for returning users.
+  useEffect(() => {
     try {
       const raw = localStorage.getItem(HISTORY_KEY);
-      return raw ? (JSON.parse(raw) as HistoryEntry[]) : [];
+      // Deliberate post-mount setState: the value only exists on the client, so
+      // hydrating with it up front would mismatch the server-rendered [].
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (raw) setEntries(JSON.parse(raw) as HistoryEntry[]);
     } catch {
-      return [];
+      // ignore malformed/unavailable storage
     }
-  });
+  }, []);
 
   const save = useCallback((report: Report) => {
     setEntries(prev => {
