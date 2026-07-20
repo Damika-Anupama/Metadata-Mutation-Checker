@@ -105,6 +105,32 @@ function validatePdfFile(selectedFile: File | null) {
   return "";
 }
 
+// Shareable reports are encoded into the URL hash (client-only, never sent to
+// the server) as base64url JSON, so a link reconstructs the report with no
+// backend and no re-upload.
+const SHARE_HASH_PREFIX = "#report=";
+
+function encodeReportToHash(report: Report): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(report));
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function decodeReportFromHash(encoded: string): Report | null {
+  try {
+    const b64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const data = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+    if (data && typeof data === "object" && Array.isArray((data as Report).findings)) {
+      return data as Report;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function ShieldIcon({ className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
@@ -1117,6 +1143,7 @@ export default function Home() {
   const [showOnlyDifferences, setShowOnlyDifferences] = useState(false);
   const [loadingSeconds, setLoadingSeconds] = useState(0);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isSharedView, setIsSharedView] = useState(false);
   const batchInputRef = useRef<HTMLInputElement | null>(null);
   const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
   const [batchIsDragging, setBatchIsDragging] = useState(false);
@@ -1131,6 +1158,25 @@ export default function Home() {
     }, 1000);
     return () => window.clearInterval(intervalId);
   }, [isAnyAnalysisLoading]);
+
+  // Reconstruct a shared report from the URL hash on the client only (the hash
+  // never reaches the server, so this cannot run during SSR without mismatch).
+  // Also listen for hashchange so pasting a share link into an already-open tab
+  // — a same-document navigation that never remounts — still loads the report.
+  useEffect(() => {
+    const applyHashReport = () => {
+      if (!window.location.hash.startsWith(SHARE_HASH_PREFIX)) return;
+      const shared = decodeReportFromHash(window.location.hash.slice(SHARE_HASH_PREFIX.length));
+      if (!shared) return;
+      setReport(shared);
+      setMode("analyze");
+      setIsSharedView(true);
+      setIsDemoMode(false);
+    };
+    applyHashReport();
+    window.addEventListener("hashchange", applyHashReport);
+    return () => window.removeEventListener("hashchange", applyHashReport);
+  }, []);
 
   const requestAnalysis = useCallback(async (selectedFile: File, source: string) => {
     const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1204,6 +1250,7 @@ export default function Home() {
       setError("");
       setReport(null);
       setIsDemoMode(false);
+      setIsSharedView(false);
 
       try {
         const result = await requestAnalysis(selectedFile, "analyze");
@@ -1252,7 +1299,21 @@ export default function Home() {
     setError("");
     setExportStatus("");
     setIsDemoMode(true);
+    setIsSharedView(false);
   }, []);
+
+  const shareReport = useCallback(async () => {
+    if (!report) return;
+    const url = `${window.location.origin}${window.location.pathname}${SHARE_HASH_PREFIX}${encodeReportToHash(report)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setExportStatus("Share link copied to clipboard.");
+    } catch {
+      // Reflect it in the address bar so the user can still copy it manually.
+      window.history.replaceState(null, "", url);
+      setExportStatus("Share link added to the address bar — copy it from there.");
+    }
+  }, [report]);
 
   const selectCompareFile = useCallback(
     async (slot: CompareSlot, selectedFile: File | null, source: "input" | "drop") => {
@@ -1575,7 +1636,25 @@ export default function Home() {
               </div>
             )}
 
-            {report && <ReportView exportStatus={exportStatus} onCopySummary={copySummary} onDownloadJson={downloadJson} onDownloadText={downloadText} report={report} />}
+            {isSharedView && report && (
+              <div className="mt-5 flex flex-wrap items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm text-indigo-800">
+                <span className="font-semibold">Shared report</span>
+                <span className="text-indigo-700">You&apos;re viewing an analysis opened from a shared link.</span>
+                <button
+                  className="ml-auto text-xs font-medium text-indigo-700 underline underline-offset-2 hover:text-indigo-900"
+                  onClick={() => {
+                    setReport(null);
+                    setIsSharedView(false);
+                    window.history.replaceState(null, "", window.location.pathname);
+                  }}
+                  type="button"
+                >
+                  Start fresh
+                </button>
+              </div>
+            )}
+
+            {report && <ReportView exportStatus={exportStatus} onCopySummary={copySummary} onDownloadJson={downloadJson} onDownloadText={downloadText} onShare={shareReport} report={report} />}
           </>
         ) : mode === "compare" ? (
           <>
@@ -1778,12 +1857,14 @@ function ReportView({
   onCopySummary,
   onDownloadJson,
   onDownloadText,
+  onShare,
 }: {
   report: Report;
   exportStatus: string;
   onCopySummary: () => void;
   onDownloadJson: () => void;
   onDownloadText: () => void;
+  onShare?: () => void;
 }) {
   const annotations = useAnnotations();
   return (
@@ -1795,6 +1876,11 @@ function ReportView({
             <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">{report.document_name}</h2>
           </div>
           <div className="flex flex-wrap gap-2">
+            {onShare && (
+              <button className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" onClick={onShare} type="button">
+                Share
+              </button>
+            )}
             <button className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" onClick={onCopySummary} type="button">
               Copy summary
             </button>

@@ -13,6 +13,16 @@ const samplePdf = Buffer.from(
     "%%EOF\n"
 );
 
+// Mirror of app/page.tsx encodeReportToHash (btoa over latin1 == base64).
+function encodeReportToHash(report: unknown): string {
+  const json = JSON.stringify(report);
+  return Buffer.from(json, "utf-8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
 test.describe("Metadata Mutation Checker — core UI", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
@@ -68,5 +78,36 @@ test.describe("Metadata Mutation Checker — core UI", () => {
     await expect(page.getByRole("heading", { name: "sample.pdf" })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("heading", { name: "Findings" })).toBeVisible();
     await expect(page.getByText(/Authoring tool post-dates/i)).toBeVisible();
+  });
+
+  test("reconstructs a shared report from the URL hash", async ({ page }) => {
+    const report = {
+      document_name: "shared_doc.pdf",
+      file_type: "PDF",
+      metadata_risk_score: 42,
+      metadata_risk_level: "Medium",
+      summary: "A shared analysis summary.",
+      extracted_metadata: {
+        file_name: "shared_doc.pdf",
+        file_size_bytes: 1234,
+        page_count: 3,
+        is_encrypted: false,
+        created_date: "2021-01-01T00:00:00Z",
+        modified_date: "2021-02-01T00:00:00Z",
+      },
+      findings: [
+        { title: "Example shared finding", severity: "Medium", confidence: 0.7, category: "date", explanation: "Detail." },
+      ],
+      recommended_action: "Review manually.",
+      disclaimer: "Indicative only.",
+    };
+
+    // Simulate opening the share link fresh (full document load with the hash
+    // present), which is how a recipient actually lands on it.
+    await page.goto(`/#report=${encodeReportToHash(report)}`);
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "shared_doc.pdf" })).toBeVisible();
+    await expect(page.getByText("Shared report")).toBeVisible();
+    await expect(page.getByText("Example shared finding")).toBeVisible();
   });
 });
