@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, tests-ci-observability, "demo/**"]
+    branches: [main]
   pull_request:
     branches: [main]
 
