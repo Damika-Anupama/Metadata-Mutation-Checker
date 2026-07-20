@@ -63,17 +63,27 @@ export function parsePdfDate(rawDate: unknown): string | null {
   try {
     const clean = value.replace(/^D:/, "");
     const year = clean.slice(0, 4);
+    if (!/^\d{4}$/.test(year)) return value;
+
     const month = clean.slice(4, 6) || "01";
     const day = clean.slice(6, 8) || "01";
     const hour = clean.slice(8, 10) || "00";
     const minute = clean.slice(10, 12) || "00";
     const second = clean.slice(12, 14) || "00";
 
-    if (year.length === 4) {
-      const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}Z`);
-      if (!Number.isNaN(date.getTime())) {
-        return date.toISOString().replace(".000Z", "");
-      }
+    // Honor the PDF timezone offset (D:YYYYMMDDHHmmSS+HH'mm', -HH'mm', or Z)
+    // instead of assuming UTC. Dropping it silently shifted every date by the
+    // offset — the wrong thing for a tool whose whole purpose is date forensics.
+    const tzMatch = clean.slice(14).match(/^([+-])(\d{2})'?(\d{2})?'?/);
+    const offset = tzMatch
+      ? `${tzMatch[1]}${tzMatch[2]}:${tzMatch[3] ?? "00"}`
+      : "Z";
+
+    const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}${offset}`);
+    if (!Number.isNaN(date.getTime())) {
+      // Canonical UTC ISO, keeping the trailing Z so downstream parsers can't
+      // reinterpret it as local time.
+      return date.toISOString().replace(/\.000Z$/, "Z");
     }
   } catch {
     return value;
