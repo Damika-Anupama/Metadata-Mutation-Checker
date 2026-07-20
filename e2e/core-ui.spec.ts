@@ -158,7 +158,10 @@ test.describe("Metadata Mutation Checker — core UI", () => {
     // present), which is how a recipient actually lands on it.
     await page.goto(`/#report=${encodeReportToHash(report)}`);
     await page.reload();
-    await expect(page.getByRole("heading", { name: "shared_doc.pdf" })).toBeVisible();
+    // Generous timeout: a full reload + hydration + the hash-load effect can
+    // exceed the 5s default under parallel-worker load (matches the other
+    // report-rendering tests).
+    await expect(page.getByRole("heading", { name: "shared_doc.pdf" })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("Shared report")).toBeVisible();
     await expect(page.getByText("Example shared finding")).toBeVisible();
   });
