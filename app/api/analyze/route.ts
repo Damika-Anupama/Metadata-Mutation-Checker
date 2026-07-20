@@ -9,6 +9,7 @@ import {
   type MetadataResult,
 } from "../../../lib/metadata-analysis";
 import { parsePdfStructure, type PdfStructure } from "../../../lib/pdf-structure";
+import { extractXmp } from "../../../lib/xmp";
 
 export const runtime = "nodejs";
 
@@ -106,6 +107,7 @@ function extractPdfMetadata(bytes: Uint8Array, file: File): MetadataResult {
   const rawMetadata = Object.fromEntries(
     metadataKeys.map((key) => [key, extractMetadataValue(pdfText, key)])
   );
+  const xmp = extractXmp(pdfText);
 
   return {
     file_name: file.name,
@@ -124,6 +126,13 @@ function extractPdfMetadata(bytes: Uint8Array, file: File): MetadataResult {
     page_count: countPages(pdfText),
     is_encrypted: /\/Encrypt\b/.test(pdfText),
     incremental_updates: countIncrementalUpdates(pdfText),
+    xmp_present: xmp.present,
+    xmp_producer: xmp.producer,
+    xmp_creator_tool: xmp.creator_tool,
+    xmp_create_date: xmp.create_date,
+    xmp_modify_date: xmp.modify_date,
+    xmp_title: xmp.title,
+    xmp_author: xmp.creator,
   };
 }
 

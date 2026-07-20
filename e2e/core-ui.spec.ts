@@ -80,6 +80,34 @@ test.describe("Metadata Mutation Checker — core UI", () => {
     await expect(page.getByText(/Authoring tool post-dates/i)).toBeVisible();
   });
 
+  test("flags an XMP vs Info-dictionary metadata disagreement (F2)", async ({ page }) => {
+    // /Info says the producer is Microsoft Word; the embedded XMP packet says
+    // Ghostscript — the two metadata stores disagree, which is the F2 signal.
+    const mismatchPdf = Buffer.from(
+      "%PDF-1.5\n" +
+        "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
+        "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
+        "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]>>endobj\n" +
+        "4 0 obj<</Type/Metadata/Subtype/XML/Length 200>>stream\n" +
+        '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">' +
+        '<rdf:Description xmlns:pdf="http://ns.adobe.com/pdf/1.3/" pdf:Producer="Ghostscript 9.55"/>' +
+        "</rdf:RDF></x:xmpmeta>\n" +
+        "endstream endobj\n" +
+        "trailer<</Root 1 0 R/Info<</Author(Jane)/Creator(Microsoft Word)" +
+        "/Producer(Microsoft Word)/CreationDate(D:20200101000000Z)>>>>\n" +
+        "%%EOF\n"
+    );
+
+    await page.locator('input[name="file"]').setInputFiles({
+      name: "mismatch.pdf",
+      mimeType: "application/pdf",
+      buffer: mismatchPdf,
+    });
+
+    await expect(page.getByRole("heading", { name: "mismatch.pdf" })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/XMP metadata disagrees with the document info dictionary/i)).toBeVisible();
+  });
+
   test("reconstructs a shared report from the URL hash", async ({ page }) => {
     const report = {
       document_name: "shared_doc.pdf",

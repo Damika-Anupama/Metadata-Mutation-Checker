@@ -26,6 +26,15 @@ export type MetadataResult = {
   // True when pdf-lib structurally parsed the document (F1). Optional so
   // text-scan-only callers and fixtures still satisfy the type.
   structure_parsed?: boolean;
+  // Embedded XMP packet fields (F2), compared against the /Info values above.
+  // All optional so existing fixtures/tests remain valid.
+  xmp_present?: boolean;
+  xmp_producer?: string | null;
+  xmp_creator_tool?: string | null;
+  xmp_create_date?: string | null;
+  xmp_modify_date?: string | null;
+  xmp_title?: string | null;
+  xmp_author?: string | null;
 };
 
 const suspiciousTools = [
@@ -438,7 +447,66 @@ export function runMetadataChecks(metadata: MetadataResult): Finding[] {
     );
   }
 
+  // Rule: embedded XMP metadata disagrees with the /Info dictionary (F2). PDFs
+  // carry metadata in two places; a faithful producer keeps them in sync, so a
+  // divergence is a signal the file was rewritten by a tool that touched only
+  // one of the two stores.
+  if (metadata.xmp_present) {
+    const mismatches = collectXmpInfoMismatches(metadata);
+    if (mismatches.length) {
+      addFinding(
+        findings,
+        "Embedded XMP metadata disagrees with the document info dictionary",
+        "Medium",
+        0.72,
+        `The XMP metadata packet and the classic /Info dictionary disagree on: ${mismatches.join(", ")}. When a document is edited, some tools update one metadata store but not the other, so this divergence can indicate the file was processed or re-exported after its original authoring.`,
+        "consistency"
+      );
+    }
+  }
+
   return findings;
+}
+
+function normalizeText(value: string | null | undefined): string | null {
+  if (value === undefined || value === null) return null;
+  const text = value.trim().toLowerCase().replace(/\s+/g, " ");
+  return text.length ? text : null;
+}
+
+// Two date strings "disagree" only when both parse and land more than a minute
+// apart — small enough to catch a re-export that shifts the clock, large enough
+// to tolerate sub-second/rounding noise between the two serializations.
+function datesDisagree(a: string | null | undefined, b: string | null | undefined): boolean {
+  const da = safeParseDate(a ?? null);
+  const db = safeParseDate(b ?? null);
+  if (!da || !db) return false;
+  return Math.abs(da.getTime() - db.getTime()) > 60_000;
+}
+
+function collectXmpInfoMismatches(metadata: MetadataResult): string[] {
+  const mismatches: string[] = [];
+
+  const stringPairs: Array<[string, string | null | undefined, string | null | undefined]> = [
+    ["producer", metadata.producer, metadata.xmp_producer],
+    ["creator/authoring tool", metadata.creator, metadata.xmp_creator_tool],
+    ["title", metadata.title, metadata.xmp_title],
+    ["author", metadata.author, metadata.xmp_author],
+  ];
+  for (const [label, infoValue, xmpValue] of stringPairs) {
+    const info = normalizeText(infoValue);
+    const xmp = normalizeText(xmpValue);
+    if (info && xmp && info !== xmp) mismatches.push(label);
+  }
+
+  if (datesDisagree(metadata.created_date, metadata.xmp_create_date)) {
+    mismatches.push("creation date");
+  }
+  if (datesDisagree(metadata.modified_date, metadata.xmp_modify_date)) {
+    mismatches.push("modification date");
+  }
+
+  return mismatches;
 }
 
 function severityWeight(severity: string) {
