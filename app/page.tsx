@@ -368,8 +368,21 @@ function useAnnotations() {
 
   const set = useCallback((key: string, annotation: FindingAnnotation) => {
     setMap(prev => {
-      const next = { ...prev, [key]: annotation };
-      try { localStorage.setItem(ANNOTATIONS_KEY, JSON.stringify(next)); } catch {}
+      // Merge against the freshest persisted map, not just this hook instance's
+      // (possibly stale) state. Several ReportViews can be mounted at once
+      // (e.g. multiple expanded batch rows) and all share ANNOTATIONS_KEY, so
+      // serializing from stale state would silently drop other views' writes.
+      let base = prev;
+      try {
+        const raw = localStorage.getItem(ANNOTATIONS_KEY);
+        if (raw) base = { ...prev, ...(JSON.parse(raw) as AnnotationMap) };
+      } catch {
+        // ignore malformed/unavailable storage
+      }
+      const next = { ...base, [key]: annotation };
+      try { localStorage.setItem(ANNOTATIONS_KEY, JSON.stringify(next)); } catch {
+        // ignore quota/unavailable storage
+      }
       return next;
     });
   }, []);
