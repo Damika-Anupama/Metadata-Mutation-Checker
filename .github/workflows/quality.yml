@@ -2,9 +2,9 @@ name: Quality
 
 on:
   push:
-    branches: [main]
+    branches: [main, frontend-demo]
   pull_request:
-    branches: [main]
+    branches: [main, frontend-demo]
 
 jobs:
   lint-and-build:
@@ -24,6 +24,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Test
+        run: npm test
 
       - name: Build
         run: npm run build
