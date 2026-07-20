@@ -52,7 +52,12 @@ function unescapePdfString(value: string): string {
 }
 
 function extractLiteralString(pdfText: string, key: string): string | null {
-  const regex = new RegExp(`/${key}\\s*\\(([^)]*(?:\\\\.[^)]*)*)\\)`, "s");
+  // Use a linear-time alternation `(?:[^\\)]|\\.)*` instead of the nested
+  // quantifier `[^)]*(?:\\.[^)]*)*`, which is catastrophically backtracking
+  // (ReDoS) and can hang the request on a crafted PDF with an unbalanced
+  // parenthesis. This form also correctly walks past escaped `\)` inside the
+  // string to the real closing paren.
+  const regex = new RegExp(`/${key}\\s*\\(((?:[^\\\\)]|\\\\.)*)\\)`, "s");
   const match = pdfText.match(regex);
   return match ? unescapePdfString(match[1]) : null;
 }
