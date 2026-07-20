@@ -2,7 +2,7 @@
 
 import type { ChangeEvent, DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AnnotationStatus, BatchItem, BatchStatus, CompareRow, CompareSlot, Finding, HistoryEntry, IconProps, Mode, Report } from "@/lib/types";
+import type { AnnotationStatus, BatchItem, BatchStatus, CompareRow, CompareSlot, Finding, HistoryEntry, Mode, Report } from "@/lib/types";
 import {
   ANALYZE_ENDPOINT,
   compareKeys,
@@ -24,59 +24,29 @@ import {
   validatePdfFile,
 } from "./report-data";
 import { useAnnotations, useHistory } from "./hooks";
-
-function ShieldIcon({ className }: IconProps) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M12 3.25 5.75 5.6v5.25c0 4.1 2.62 7.72 6.25 9.05 3.63-1.33 6.25-4.95 6.25-9.05V5.6L12 3.25Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-      <path d="m9.25 12.1 1.75 1.75 3.9-4.15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function EyeIcon({ className }: IconProps) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M2.75 12s3.35-6.25 9.25-6.25S21.25 12 21.25 12 17.9 18.25 12 18.25 2.75 12 2.75 12Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-      <path d="M12 14.75a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function CompareIcon({ className }: IconProps) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M7 4v13.25A2.75 2.75 0 0 0 9.75 20H17" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-      <path d="M17 16.5 20.5 20 17 23.5M17 4H9.75A2.75 2.75 0 0 0 7 6.75V8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-      <path d="M4 4h6M4 8h6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function LayersIcon({ className }: IconProps) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M2 8.5 12 3.75 22 8.5 12 13.25 2 8.5Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
-      <path d="m2 13 10 4.75L22 13M2 17.5l10 4.75 10-4.75" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function ChevronDownIcon({ className }: IconProps) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="m6 9 6 6 6-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function TrashIcon({ className }: IconProps) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
+import {
+  ChevronDownIcon,
+  CompareIcon,
+  DownloadIcon,
+  EyeIcon,
+  FileIcon,
+  HistoryIcon,
+  LayersIcon,
+  ShieldIcon,
+  SpinnerIcon,
+  TrashIcon,
+  UploadIcon,
+} from "./components/icons";
+import {
+  formatBytes,
+  formatMetadataLabel,
+  getLoadingStep,
+  getMetadataGroup,
+  getMetadataStatus,
+  getRiskAccent,
+  getRiskClass,
+  getRiskRingColor,
+} from "./ui-format";
 
 function DateTimeline({ metadata }: { metadata: Record<string, unknown> }) {
   const [todayMs] = useState(() => Date.now());
@@ -235,55 +205,6 @@ function DateTimeline({ metadata }: { metadata: Record<string, unknown> }) {
         </p>
       )}
     </div>
-  );
-}
-
-function UploadIcon({ className }: IconProps) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M12 15.75V4.75m0 0-4 4m4-4 4 4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-      <path d="M5 14.75v2.5A2.75 2.75 0 0 0 7.75 20h8.5A2.75 2.75 0 0 0 19 17.25v-2.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function SpinnerIcon({ className }: IconProps) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <circle className="opacity-20" cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" />
-      <path
-        className="opacity-90"
-        d="M21 12a9 9 0 0 0-9-9"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="3"
-      />
-    </svg>
-  );
-}
-
-function FileIcon({ className }: IconProps) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M7 3.75h6.2L17 7.55v12.7H7a2 2 0 0 1-2-2V5.75a2 2 0 0 1 2-2Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-      <path d="M13 3.75V8h4M8.5 12.5h7M8.5 16h5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function DownloadIcon({ className }: IconProps) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M12 4.75v10.5m0 0-4-4m4 4 4-4M5 19.25h14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function HistoryIcon({ className }: IconProps) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M12 8v4l2.5 2.5M3.05 11a9 9 0 1 0 .49-3M3 5v6h6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
   );
 }
 
@@ -472,57 +393,6 @@ function HistoryPanel({
       </div>
     </div>
   );
-}
-
-function getRiskClass(level: string) {
-  if (level === "High") return "border-red-200 bg-red-50 text-red-700";
-  if (level === "Medium") return "border-amber-200 bg-amber-50 text-amber-700";
-  return "border-emerald-200 bg-emerald-50 text-emerald-700";
-}
-
-function getRiskAccent(level: string) {
-  if (level === "High") return "text-red-600";
-  if (level === "Medium") return "text-amber-600";
-  return "text-emerald-600";
-}
-
-function getRiskRingColor(level: string) {
-  if (level === "High") return "#dc2626";
-  if (level === "Medium") return "#d97706";
-  return "#059669";
-}
-
-function formatBytes(value: unknown) {
-  const bytes = Number(value);
-  if (!Number.isFinite(bytes)) return "N/A";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-function formatMetadataLabel(key: string) {
-  return key.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function getMetadataGroup(key: string) {
-  if (["file_name", "file_size_bytes", "file_type", "pdf_version", "page_count", "is_encrypted"].includes(key)) return "File & structure";
-  if (["created_date", "modified_date", "raw_created_date", "raw_modified_date"].includes(key)) return "Dates";
-  if (["author", "title", "subject"].includes(key)) return "Document details";
-  if (["creator", "producer"].includes(key)) return "Authoring tools";
-  return "Other metadata";
-}
-
-function getMetadataStatus(value: unknown) {
-  if (value === undefined || value === null || value === "") return { label: "Missing", className: "bg-amber-50 text-amber-700" };
-  if (typeof value === "boolean") return { label: value ? "Yes" : "No", className: value ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700" };
-  return { label: "Present", className: "bg-emerald-50 text-emerald-700" };
-}
-
-function getLoadingStep(seconds: number) {
-  if (seconds >= 8) return "Preparing report";
-  if (seconds >= 5) return "Checking mutation signals";
-  if (seconds >= 2) return "Extracting metadata";
-  return "Uploading file";
 }
 
 function DashboardMetric({ label, value, tone = "slate" }: { label: string; value: string; tone?: "slate" | "indigo" | "amber" | "emerald" }) {
