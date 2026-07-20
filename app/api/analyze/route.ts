@@ -11,7 +11,15 @@ import {
 
 export const runtime = "nodejs";
 
-const MAX_UPLOAD_SIZE_MB = Number(process.env.MAX_UPLOAD_SIZE_MB ?? "8");
+const DEFAULT_MAX_UPLOAD_SIZE_MB = 8;
+const parsedMaxUploadMb = Number(process.env.MAX_UPLOAD_SIZE_MB);
+// Fall back to the default when the env var is unset, non-numeric, or <= 0,
+// so a misconfigured value can never silently disable the size cap
+// (NaN comparisons are always false, which would let any file through).
+const MAX_UPLOAD_SIZE_MB =
+  Number.isFinite(parsedMaxUploadMb) && parsedMaxUploadMb > 0
+    ? parsedMaxUploadMb
+    : DEFAULT_MAX_UPLOAD_SIZE_MB;
 const MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024;
 
 const metadataKeys = [
@@ -154,6 +162,20 @@ export async function POST(request: Request) {
     }
 
     const bytes = new Uint8Array(await fileValue.arrayBuffer());
+
+    // Validate actual PDF content, not just the .pdf extension. Per the PDF
+    // spec a reader scans the first bytes for the header, so allow a little
+    // leading slack rather than requiring it at offset 0. This also avoids
+    // emitting misleading "zero pages / high risk" findings for a non-PDF
+    // file that was simply renamed to .pdf.
+    const headerSlice = new TextDecoder("latin1").decode(bytes.subarray(0, 1024));
+    if (!headerSlice.includes("%PDF-")) {
+      return NextResponse.json(
+        { detail: "File does not look like a valid PDF (missing %PDF header)." },
+        { status: 400 }
+      );
+    }
+
     const extractedMetadata = extractPdfMetadata(bytes, fileValue);
     const findings = runMetadataChecks(extractedMetadata);
     const riskScore = calculateRiskScore(findings);
