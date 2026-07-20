@@ -8,6 +8,7 @@ import {
   runMetadataChecks,
   type MetadataResult,
 } from "../../../lib/metadata-analysis";
+import { parsePdfStructure, type PdfStructure } from "../../../lib/pdf-structure";
 
 export const runtime = "nodejs";
 
@@ -126,6 +127,32 @@ function extractPdfMetadata(bytes: Uint8Array, file: File): MetadataResult {
   };
 }
 
+// Merge pdf-lib's structural read over the text-scan baseline. pdf-lib wins for
+// facts it derives from the parsed object graph (page count, encryption); for
+// text fields and dates it only fills gaps the text scan left null, so the
+// text scan's raw date strings (and their timezone offsets) are preserved.
+function mergeStructure(base: MetadataResult, structure: PdfStructure): MetadataResult {
+  if (!structure.parsed) {
+    return { ...base, structure_parsed: false };
+  }
+  return {
+    ...base,
+    structure_parsed: true,
+    // Authoritative: the real page tree closes the R3 zero-page false positive
+    // for PDFs whose pages live in compressed object streams.
+    page_count: structure.page_count ?? base.page_count,
+    // Either signal is enough to treat the document as encrypted.
+    is_encrypted: base.is_encrypted || structure.is_encrypted === true,
+    title: base.title ?? structure.title,
+    author: base.author ?? structure.author,
+    creator: base.creator ?? structure.creator,
+    producer: base.producer ?? structure.producer,
+    subject: base.subject ?? structure.subject,
+    created_date: base.created_date ?? structure.creation_date,
+    modified_date: base.modified_date ?? structure.modification_date,
+  };
+}
+
 export async function GET() {
   return NextResponse.json({
     status: "ok",
@@ -176,7 +203,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const extractedMetadata = extractPdfMetadata(bytes, fileValue);
+    // Text-scan baseline (fast, tolerant, preserves raw date strings + PDF
+    // header version), then override the fields pdf-lib can read authoritatively.
+    const textScanMetadata = extractPdfMetadata(bytes, fileValue);
+    const structure = await parsePdfStructure(bytes);
+    const extractedMetadata = mergeStructure(textScanMetadata, structure);
     const findings = runMetadataChecks(extractedMetadata);
     const riskScore = calculateRiskScore(findings);
     const riskLevel = getRiskLevel(riskScore);

@@ -23,6 +23,9 @@ export type MetadataResult = {
   page_count: number;
   is_encrypted: boolean;
   incremental_updates: number;
+  // True when pdf-lib structurally parsed the document (F1). Optional so
+  // text-scan-only callers and fixtures still satisfy the type.
+  structure_parsed?: boolean;
 };
 
 const suspiciousTools = [
