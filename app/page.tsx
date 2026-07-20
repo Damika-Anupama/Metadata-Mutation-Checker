@@ -9,6 +9,7 @@ const REQUEST_TIMEOUT_MS = 30000;
 const MAX_UPLOAD_SIZE_MB = 8;
 const MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024;
 const LOG_PREFIX = "[PDF Auto Analyze]";
+const TAB_ORDER: Mode[] = ["analyze", "compare", "batch", "history"];
 
 const DEMO_REPORT: Report = {
   document_name: "service_agreement_2022.pdf",
@@ -236,6 +237,24 @@ function DateTimeline({ metadata }: { metadata: Record<string, unknown> }) {
   const fmt = (ms: number) => new Date(ms).toLocaleDateString("en-US", { month: "short", year: "numeric" });
   const anchorFor = (x: number) => x < L + W * 0.12 ? "start" : x > R - W * 0.12 ? "end" : "middle";
 
+  // A non-color textual label for the gap severity so the meaning isn't carried
+  // by the segment color alone (WCAG 1.4.1 Use of Color).
+  const gapSeverity = gapDays === null ? null
+    : gapDays === 0 ? "Same day"
+    : gapDays > 365 ? "Large gap"
+    : gapDays > 30 ? "Moderate gap"
+    : "Small gap";
+
+  // Screen-reader description: the SVG itself is decorative geometry, so expose
+  // the timeline's meaning through a single role="img" label instead of hiding
+  // it entirely (the previous aria-hidden dropped it from assistive tech).
+  const timelineSummary = [
+    createdMs !== null ? `created ${fmt(createdMs)}` : null,
+    modifiedMs !== null ? `modified ${fmt(modifiedMs)}` : null,
+    gapLabel ? `${gapLabel}${gapSeverity ? ` (${gapSeverity.toLowerCase()})` : ""}` : null,
+    isFlipped ? "modified date is earlier than creation date" : null,
+  ].filter(Boolean).join(", ");
+
   return (
     <div className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Document timeline</p>
@@ -244,7 +263,7 @@ function DateTimeline({ metadata }: { metadata: Record<string, unknown> }) {
           Modified date is earlier than creation date — strong anomaly
         </p>
       )}
-      <svg aria-hidden="true" className="w-full" viewBox="0 0 500 85">
+      <svg aria-label={`Document timeline: ${timelineSummary}.`} className="w-full" role="img" viewBox="0 0 500 85">
         {/* base track */}
         <line x1={L} y1={Y} x2={R} y2={Y} stroke="#e2e8f0" strokeLinecap="round" strokeWidth={4} />
 
@@ -308,6 +327,20 @@ function DateTimeline({ metadata }: { metadata: Record<string, unknown> }) {
           Today
         </text>
       </svg>
+      {gapLabel && gapSeverity && (
+        <p className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+          <span
+            className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${
+              gapDays !== null && gapDays > 365 ? "bg-red-600"
+                : gapDays !== null && gapDays > 30 ? "bg-amber-600"
+                : "bg-emerald-600"
+            }`}
+          />
+          <span>
+            Created→modified: <span className="font-semibold text-slate-700">{gapLabel}</span> ({gapSeverity})
+          </span>
+        </p>
+      )}
     </div>
   );
 }
@@ -773,13 +806,38 @@ function RiskScoreRing({ score, level }: { score: number; level: string }) {
   );
 }
 
-function TabButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
+function TabButton({
+  active,
+  children,
+  onClick,
+  id,
+  controls,
+  onKeyDown,
+  tabRef,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+  id?: string;
+  controls?: string;
+  onKeyDown?: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+  tabRef?: (el: HTMLButtonElement | null) => void;
+}) {
   return (
     <button
+      ref={tabRef}
+      aria-controls={controls}
+      aria-selected={active}
       className={`inline-flex items-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition ${
         active ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:bg-white/70 hover:text-slate-700"
       }`}
+      id={id}
       onClick={onClick}
+      onKeyDown={onKeyDown}
+      role="tab"
+      // Roving tabindex: only the active tab is in the Tab order; arrow keys move
+      // between tabs (WAI-ARIA tabs pattern).
+      tabIndex={active ? 0 : -1}
       type="button"
     >
       {children}
@@ -1434,6 +1492,29 @@ export default function Home() {
     setCompareError("");
   };
 
+  // WAI-ARIA tabs keyboard support: arrow keys / Home / End move focus between
+  // tabs and activate them (automatic activation), matching the roving tabindex.
+  const tabRefs = useRef<Partial<Record<Mode, HTMLButtonElement | null>>>({});
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    const currentIndex = TAB_ORDER.indexOf(mode);
+    let nextIndex = currentIndex;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      nextIndex = (currentIndex + 1) % TAB_ORDER.length;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      nextIndex = (currentIndex - 1 + TAB_ORDER.length) % TAB_ORDER.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = TAB_ORDER.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    const nextMode = TAB_ORDER[nextIndex];
+    switchMode(nextMode);
+    tabRefs.current[nextMode]?.focus();
+  };
+
   const analyzeBatchItem = useCallback(async (id: string, file: File) => {
     setBatchItems(prev => prev.map(item => item.id === id ? { ...item, status: "analyzing" as BatchStatus } : item));
     try {
@@ -1544,20 +1625,52 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="flex w-full flex-wrap items-center gap-1 rounded-lg bg-slate-100 p-1 sm:inline-flex sm:w-fit sm:flex-nowrap">
-            <TabButton active={mode === "analyze"} onClick={() => switchMode("analyze")}>
+          <div
+            aria-label="Analysis modes"
+            className="flex w-full flex-wrap items-center gap-1 rounded-lg bg-slate-100 p-1 sm:inline-flex sm:w-fit sm:flex-nowrap"
+            role="tablist"
+          >
+            <TabButton
+              active={mode === "analyze"}
+              controls="mode-panel"
+              id="tab-analyze"
+              onClick={() => switchMode("analyze")}
+              onKeyDown={handleTabKeyDown}
+              tabRef={(el) => { tabRefs.current.analyze = el; }}
+            >
               <EyeIcon className="h-4 w-4" />
               Analyze
             </TabButton>
-            <TabButton active={mode === "compare"} onClick={() => switchMode("compare")}>
+            <TabButton
+              active={mode === "compare"}
+              controls="mode-panel"
+              id="tab-compare"
+              onClick={() => switchMode("compare")}
+              onKeyDown={handleTabKeyDown}
+              tabRef={(el) => { tabRefs.current.compare = el; }}
+            >
               <CompareIcon className="h-4 w-4" />
               Compare
             </TabButton>
-            <TabButton active={mode === "batch"} onClick={() => switchMode("batch")}>
+            <TabButton
+              active={mode === "batch"}
+              controls="mode-panel"
+              id="tab-batch"
+              onClick={() => switchMode("batch")}
+              onKeyDown={handleTabKeyDown}
+              tabRef={(el) => { tabRefs.current.batch = el; }}
+            >
               <LayersIcon className="h-4 w-4" />
               Batch
             </TabButton>
-            <TabButton active={mode === "history"} onClick={() => switchMode("history")}>
+            <TabButton
+              active={mode === "history"}
+              controls="mode-panel"
+              id="tab-history"
+              onClick={() => switchMode("history")}
+              onKeyDown={handleTabKeyDown}
+              tabRef={(el) => { tabRefs.current.history = el; }}
+            >
               <HistoryIcon className="h-4 w-4" />
               History
               {history.entries.length > 0 && (
@@ -1570,7 +1683,13 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">
+      <main
+        aria-labelledby={`tab-${mode}`}
+        className="mx-auto w-full max-w-5xl flex-1 px-6 py-8"
+        id="mode-panel"
+        role="tabpanel"
+        tabIndex={0}
+      >
         {mode === "analyze" ? (
           <>
             <form

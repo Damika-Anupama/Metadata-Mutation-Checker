@@ -49,13 +49,13 @@ test.describe("Metadata Mutation Checker — core UI", () => {
   });
 
   test("switches between Analyze, Compare and Batch tabs", async ({ page }) => {
-    await page.getByRole("button", { name: "Batch" }).click();
+    await page.getByRole("tab", { name: "Batch" }).click();
     await expect(page.getByText(/Drop multiple PDFs here/i)).toBeVisible();
 
-    await page.getByRole("button", { name: "Compare" }).click();
+    await page.getByRole("tab", { name: "Compare" }).click();
     await expect(page.getByText(/Upload a PDF to compare/i).first()).toBeVisible();
 
-    await page.getByRole("button", { name: "Analyze" }).click();
+    await page.getByRole("tab", { name: "Analyze" }).click();
     await expect(page.getByText(/Drag & drop your file here/i)).toBeVisible();
   });
 
@@ -109,5 +109,24 @@ test.describe("Metadata Mutation Checker — core UI", () => {
     await expect(page.getByRole("heading", { name: "shared_doc.pdf" })).toBeVisible();
     await expect(page.getByText("Shared report")).toBeVisible();
     await expect(page.getByText("Example shared finding")).toBeVisible();
+  });
+
+  test("mode tabs expose ARIA tab semantics and arrow-key navigation", async ({ page }) => {
+    const tablist = page.getByRole("tablist", { name: "Analysis modes" });
+    await expect(tablist).toBeVisible();
+
+    const analyzeTab = page.getByRole("tab", { name: "Analyze" });
+    const compareTab = page.getByRole("tab", { name: "Compare" });
+    await expect(analyzeTab).toHaveAttribute("aria-selected", "true");
+
+    // ArrowRight from the active tab moves selection and focus to the next tab.
+    await analyzeTab.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(compareTab).toHaveAttribute("aria-selected", "true");
+    await expect(compareTab).toBeFocused();
+    await expect(page.getByText(/Upload a PDF to compare/i).first()).toBeVisible();
+
+    // The panel is wired back to the active tab for screen readers.
+    await expect(page.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "tab-compare");
   });
 });
