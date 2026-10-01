@@ -24,10 +24,10 @@ The tool gives a fast first-pass signal in seconds — not a replacement for for
 
 ## Branches
 
-| Branch | Description |
-|---|---|
-| `frontend-demo` _(this branch)_ | Self-contained Next.js demo — deployed on Vercel, no backend required |
-| `main` | Full-stack source — Python FastAPI backend + Next.js frontend + Docker Compose |
+`frontend-demo` is the default branch and contains the deployed demo. The former
+full-stack `main` branch history has been merged here. The standalone Next.js
+app remains at the repository root, and the Python FastAPI service is retained
+under `backend/` for independent use.
 
 ## Local Development
 
@@ -38,7 +38,16 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-The PDF analysis runs in the same Next.js deployment via the `/api/analyze` route — no separate backend needed.
+The demo analyzes PDFs through its Next.js `/api/analyze` route and does not
+require the Python service. `docker compose up --build` also starts the retained
+FastAPI service at `http://localhost:8000` for independent use.
+
+The existing Playwright suite can be run locally with:
+
+```bash
+npx playwright install chromium
+npm run test:e2e
+```
 
 ## Deploy on Vercel
 
@@ -58,4 +67,4 @@ POST /api/analyze
 
 Upload field: `file` (PDF, max 8 MB)
 
-Optional env variable: `MAX_UPLOAD_SIZE_MB=8`
+Optional env variables: `MAX_UPLOAD_SIZE_MB=8` and `NEXT_PUBLIC_SITE_URL`.
